@@ -1,2 +1,5 @@
 *.o
+*.bin
+*.key
 mox-imager
+uart-images
