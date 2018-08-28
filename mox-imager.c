@@ -226,17 +226,24 @@ int main(int argc, char **argv)
 
 	}
 
-	if (optind == argc)
+	if (otp_read) {
+		if (optind < argc)
+			die("Images given when trying to write OTP");
+	} else if (optind == argc) {
 		die("No images given, try -h for help");
+	}
 
 	for (; optind < argc; ++optind)
 		image_load(argv[optind]);
 
-	tim = image_find(TIMH_ID);
-	tim_parse(tim, &nimages);
-
-	if (otp_read)
+	if (otp_read) {
+		tim = image_new(NULL, 0, TIMH_ID);
+		tim_minimal_image(tim);
 		tim_emit_otp_read(tim);
+	} else {
+		tim = image_find(TIMH_ID);
+		tim_parse(tim, &nimages);
+	}
 
 	tim_hash_obmi(hash_u_boot);
 

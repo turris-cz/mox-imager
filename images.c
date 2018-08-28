@@ -68,7 +68,7 @@ void image_hash(u32 alg, void *buf, size_t size, void *out, u32 hashaddr)
 	}
 }
 
-static void newimage(void *data, u32 size, u32 id)
+image_t *image_new(void *data, u32 size, u32 id)
 {
 	static int tim;
 	int i;
@@ -89,6 +89,8 @@ static void newimage(void *data, u32 size, u32 id)
 	images[i].id = id;
 	images[i].data = data;
 	images[i].size = size;
+
+	return images + i;
 }
 
 void image_load(const char *path)
@@ -126,7 +128,7 @@ void image_load(const char *path)
 
 		timdata = xmalloc(timsize);
 		memcpy(timdata, timhdr, timsize);
-		newimage(timdata, timsize, TIMH_ID);
+		image_new(timdata, timsize, TIMH_ID);
 
 		f = 0;
 		for (i = 0; i < tim_nimages(timhdr); ++i) {
@@ -142,14 +144,14 @@ void image_load(const char *path)
 			if (!entry || st.st_size < entry + size)
 				continue;
 
-			newimage(data + entry, size, le32toh(img->id));
+			image_new(data + entry, size, le32toh(img->id));
 			++f;
 		}
 
 		if (!f)
 			munmap(data, st.st_size);
 	} else {
-		newimage(data + 4, st.st_size - 4, le32toh(*(u32 *) data));
+		image_new(data + 4, st.st_size - 4, le32toh(*(u32 *) data));
 	}
 }
 

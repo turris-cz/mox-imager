@@ -489,20 +489,20 @@ static const int instr_params[35] = {
 	[STORE_SM_TO_ADDR_IN_SM]	= 2,
 };
 
-static inline void _emit(u32 **ptr, u32 id, ...)
+static inline void _emit(u32 **pptr, u32 id, ...)
 {
 	va_list ap;
 	int i;
 
-	*(*ptr)++ = htole32(id);
+	*(*pptr)++ = htole32(id);
 
 	va_start(ap, id);
 	for (i = 0; i < instr_params[id]; ++i)
-		*(*ptr)++ = htole32(va_arg(ap, u32));
+		*(*pptr)++ = htole32(va_arg(ap, u32));
 	va_end(ap);
 }
 
-#define emit(id, ...) _emit(ptr, id, ##__VA_ARGS__)
+#define emit(id, ...) _emit(pptr, id, ##__VA_ARGS__)
 
 #define emit_putc(c)						\
 	do {							\
@@ -525,7 +525,7 @@ static inline void _emit(u32 **ptr, u32 id, ...)
 
 #define EFUSE_RC(r,c)	((((r) & 0x3f) << 7) | ((c) & 0x7f))
 
-static void emit_otp_read_row(u32 **ptr, u32 sm_row, u32 sm_store0,
+static void emit_otp_read_row(u32 **pptr, u32 sm_row, u32 sm_store0,
 			      u32 sm_store1, u32 sm_sfb)
 {
 	emit(WRITE, EFUSE_CTRL, 0x4);
@@ -547,7 +547,7 @@ static void emit_otp_read_row(u32 **ptr, u32 sm_row, u32 sm_store0,
 	emit(RSHIFT_SM_VAL, sm_sfb, 4);
 }
 
-static void emit_print_sm(u32 **ptr, u32 sm, u32 *label)
+static void emit_print_sm(u32 **pptr, u32 sm, u32 *label)
 {
 	emit(LOAD_SM_VAL, 15, 0x80000000);
 	emit(LABEL, *label + 2);
@@ -565,26 +565,147 @@ static void emit_print_sm(u32 **ptr, u32 sm, u32 *label)
 	*label += 3;
 }
 
-static void emit_otp_read(u32 **ptr)
+static void emit_otp_read(u32 **pptr)
 {
 	u32 label = 4;
 
 	emit_print("OTP\r\n");
 	emit(LOAD_SM_VAL, 0, 0);
 	emit(LABEL, 1);
-	emit_otp_read_row(ptr, 0, 1, 2, 3);
+	emit_otp_read_row(pptr, 0, 1, 2, 3);
 	emit(TEST_SM_AND_BRANCH, 3, 1, 1, OP_EQ, 2);
 	emit_print("0 ");
 	emit(BRANCH, 3);
 	emit(LABEL, 2);
 	emit_print("1 ");
 	emit(LABEL, 3);
-	emit_print_sm(ptr, 2, &label);
+	emit_print_sm(pptr, 2, &label);
 	emit_putc(' ');
-	emit_print_sm(ptr, 1, &label);
+	emit_print_sm(pptr, 1, &label);
 	emit_print("\r\n");
 	emit(ADD_SM_VAL, 0, 1);
 	emit(TEST_SM_AND_BRANCH, 0, 0xffffffff, 44, OP_NE, 1);
+}
+
+static void emit_otp_write(u32 **ptr)
+{
+
+}
+
+static void tim_remove_image(image_t *tim, u32 id)
+{
+	timhdr_t *timhdr;
+	imginfo_t *img;
+	void *imgend;
+	int i;
+
+	timhdr = (void *) tim->data;
+
+	for (i = 0; i < tim_nimages(timhdr); ++i) {
+		img = tim_image(timhdr, i);
+		if (le32toh(img->id) == id)
+			break;
+	}
+
+	if (i == tim_nimages(timhdr))
+		return;
+
+	if (i > 0)
+		(img - 1)->nextid = img->nextid;
+
+	imgend = img + 1;
+	memmove(img, imgend, (void *) tim->data + tim->size - imgend);
+
+	timhdr->numimages = htole32(tim_nimages(timhdr) - 1);
+	tim->size -= sizeof(imginfo_t);
+
+	printf("removed image %s\n", id2name(id));
+}
+
+static void tim_remove_pkg(image_t *tim, u32 id)
+{
+	timhdr_t *timhdr;
+	reshdr_t *reshdr;
+	respkg_t *pkg;
+	u32 pkgsize;
+	void *pkgend;
+
+	timhdr = (void *) tim->data;
+	reshdr = reserved_area(timhdr);
+
+	for (pkg = firstpkg(timhdr); pkg; pkg = nextpkg(timhdr, pkg))
+		if (le32toh(pkg->id) == id)
+			break;
+
+	if (!pkg)
+		return;
+
+	pkgsize = le32toh(pkg->size);
+	pkgend = (void *) pkg + pkgsize;
+	memmove(pkg, pkgend, (void *) tim->data + tim->size - pkgend);
+
+	reshdr = reserved_area(timhdr);
+	reshdr->pkgs = htole32(le32toh(reshdr->pkgs) - 1);
+	timhdr->sizeofreserved = htole32(le32toh(timhdr->sizeofreserved) - pkgsize);
+	tim->size -= pkgsize;
+
+	printf("removed packages %s\n", id2name(id));
+}
+
+void tim_minimal_image(image_t *tim)
+{
+	void *data;
+	timhdr_t *timhdr;
+	imginfo_t *img;
+	reshdr_t *reshdr;
+	respkg_t *pkg;
+
+	data = xmalloc(228);
+	memset(data, 0, 228);
+
+	timhdr = data;
+	timhdr->version = htole32(0x30600);
+	timhdr->sizeofreserved = htole32(64);
+	timhdr->bootflashsign = htole32(BOOTFS_UART);
+	timhdr->identifier = htole32(TIMH_ID);
+	timhdr->numimages = htole32(1);
+
+	img = (void *) (timhdr + 1);
+	img->id = htole32(TIMH_ID);
+	img->loadaddr = htole32(0x20006000);
+	img->hashalg = htole32(HASH_SHA512);
+	img->nextid = 0xffffffff;
+	img->size = img->sizetohash = htole32(228);
+
+	reshdr = (void *) (img + 1);
+	reshdr->id = htole32(RES_ID);
+	reshdr->pkgs = 3;
+
+	pkg = (void *) (reshdr + 1);
+	pkg->id = htole32(name2id("CIDP"));
+	pkg->size = htole32(24);
+	pkg->data[0] = htole32(1);
+	pkg->data[1] = htole32(name2id("TBRI"));
+	pkg->data[2] = htole32(1);
+	pkg->data[3] = htole32(name2id("GPP1"));
+
+	pkg = (void *) pkg + 24;
+	pkg->id = htole32(name2id("GPP1"));
+	pkg->size = htole32(24);
+	pkg->data[0] = htole32(1);
+	pkg->data[1] = htole32(0xa);
+	pkg->data[2] = htole32(6);
+	pkg->data[3] = 0;
+
+	pkg = (void *) pkg + 24;
+	pkg->id = htole32(name2id("Term"));
+	pkg->size = htole32(8);
+
+	if (tim->data)
+		free(tim->data);
+
+	tim->data = data;
+	tim->size = 228;
 }
 
 static void tim_emit_gpp1(image_t *tim, void (*emit_func)(u32 **))
@@ -593,6 +714,8 @@ static void tim_emit_gpp1(image_t *tim, void (*emit_func)(u32 **))
 	respkg_t *pkg;
 	void *pkgend;
 	u32 *instr, *ptr, togrow, oldtimsize;
+
+	tim_minimal_image(tim);
 
 	ptr = instr = xmalloc(16384);
 
