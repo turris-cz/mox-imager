@@ -3,6 +3,7 @@
  * 2018 by Marek Behun <marek.behun@nic.cz>
  */
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <openssl/ecdsa.h>
@@ -329,7 +330,7 @@ static void tim_add_pkgs(image_t *tim, int npkgs, void *pkgs, size_t size)
 			pkg->size = htole32(sizeof(respkg_t));
 		}
 
-		/* change reserver area header */
+		/* change reserved area header */
 		reshdr->pkgs = htole32(le32toh(reshdr->pkgs) + npkgs);
 	}
 
@@ -400,4 +401,181 @@ void tim_sign(image_t *tim, EC_KEY *key)
 
 	bn2tim(sig->r, platds->ECDSA.sig.r, 17);
 	bn2tim(sig->s, platds->ECDSA.sig.s, 17);
+}
+
+static u32 name2id(const char *name)
+{
+	return htole32(htobe32(*(u32 *) name));
+}
+
+u32 *_emit(u32 *ptr, u32 id, int params, ...)
+{
+	va_list ap;
+	int i;
+
+	*ptr++ = htole32(id);
+
+	va_start(ap, params);
+	for (i = 0; i < params; ++i)
+		*ptr++ = htole32(va_arg(ap, u32));
+	va_end(ap);
+
+	return ptr;
+}
+
+#define emit(id, ...) ptr = _emit(ptr, id, ##__VA_ARGS__)
+#define NOP			0
+#define WRITE			1, 2
+#define READ			2, 2
+#define DELAY			3, 1
+#define WAIT_FOR_BIT_SET	4, 3
+#define WAIT_FOR_BIT_CLEAR	5, 3
+#define AND_VAL			6, 2
+#define OR_VAL			7, 2
+#define SET_BITFIELD		8, 3
+#define WAIT_FOR_BIT_PATTERN	9, 4
+#define LOAD_SM_ADDR		12, 2
+#define LOAD_SM_VAL		13, 2
+#define STORE_SM_ADDR		14, 2
+#define MOV_SM_SM		15, 2
+#define RSHIFT_SM_VAL		16, 2
+#define LSHIFT_SM_VAL		17, 2
+#define AND_SM_VAL		18, 2
+#define OR_SM_VAL		19, 2
+#define OR_SM_SM		20, 2
+#define AND_SM_SM		21, 2
+#define LABEL			24, 1
+#define TEST_ADDR_AND_BRANCH	25, 5
+#define TEST_SM_AND_BRANCH	26, 5
+#define BRANCH			27, 1
+#define ADD_SM_VAL		29, 2
+#define ADD_SM_SM		30, 2
+
+#define OP_EQ			1
+#define OP_NE			2
+#define OP_LT			3
+#define OP_LTE			4
+#define OP_GT			5
+#define OP_GTE			6
+
+#define EFUSE_CTRL	0x40003430
+#define EFUSE_RW	0x40003434
+#define EFUSE_D0	0x40003438
+#define EFUSE_D1	0x4000343c
+#define EFUSE_AUX	0x40003440
+
+#define EFUSE_RC(r,c)	((((r) & 0x3f) << 7) | ((c) & 0x7f))
+
+#define emit_putc(c)						\
+	do {							\
+		emit(WRITE, 0xC0012004, (u32) (c));		\
+		emit(WAIT_FOR_BIT_SET, 0xC001200C, 0x20, 1);	\
+	} while (0);
+
+#define emit_print(str)					\
+	do {						\
+		int i;					\
+		for (i = 0; i < strlen((str)); ++i)	\
+			emit_putc((str)[i]);		\
+	} while (0);
+
+static u32 *emit_otp_read(u32 *ptr)
+{
+	emit_print("OTP\r\n");
+
+	emit(LOAD_SM_VAL, 4, 0);
+	emit(LABEL, 7);
+	emit(WRITE, EFUSE_CTRL, 0x4);
+	emit(DELAY, 1);
+	emit(OR_VAL, EFUSE_CTRL, 0x8);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x7, 0x3);
+	emit(STORE_SM_ADDR, 4, EFUSE_RW);
+	emit(DELAY, 1);
+	emit(OR_VAL, EFUSE_CTRL, 0x100);
+	emit(DELAY, 1);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x100, 0);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x6, 0x4);
+	emit(WAIT_FOR_BIT_SET, EFUSE_AUX, 0x80000000);
+	emit(LOAD_SM_ADDR, 0, EFUSE_D0);
+	emit(LOAD_SM_ADDR, 1, EFUSE_D1);
+
+	emit(TEST_ADDR_AND_BRANCH, EFUSE_AUX, 0x10, 0x10, OP_EQ, 8);
+	emit_print("0 ");
+	emit(BRANCH, 9);
+	emit(LABEL, 8);
+	emit_print("1 ");
+	emit(LABEL, 9);
+
+	emit(LOAD_SM_VAL, 2, 0x80000000);
+	emit(LABEL, 3);
+	emit(MOV_SM_SM, 3, 1);
+	emit(AND_SM_SM, 3, 2);
+	emit(TEST_SM_AND_BRANCH, 3, 0xffffffff, 0, OP_EQ, 1);
+	emit_putc('1');
+	emit(BRANCH, 2);
+	emit(LABEL, 1);
+	emit_putc('0');
+	emit(LABEL, 2);
+	emit(RSHIFT_SM_VAL, 2, 1);
+	emit(TEST_SM_AND_BRANCH, 2, 0xffffffff, 0, OP_NE, 3);
+	emit_putc(' ');
+
+	emit(LOAD_SM_VAL, 2, 0x80000000);
+	emit(LABEL, 6);
+	emit(MOV_SM_SM, 3, 0);
+	emit(AND_SM_SM, 3, 2);
+	emit(TEST_SM_AND_BRANCH, 3, 0xffffffff, 0, OP_EQ, 4);
+	emit_putc('1');
+	emit(BRANCH, 5);
+	emit(LABEL, 4);
+	emit_putc('0');
+	emit(LABEL, 5);
+	emit(RSHIFT_SM_VAL, 2, 1);
+	emit(TEST_SM_AND_BRANCH, 2, 0xffffffff, 0, OP_NE, 6);
+	emit_print("\r\n");
+
+	emit(ADD_SM_VAL, 4, 0x80);
+	emit(TEST_SM_AND_BRANCH, 4, 0xffffffff, 0x1600, OP_NE, 7);
+
+	return ptr;
+}
+
+static void tim_emit_gpp1(image_t *tim, u32 *(*emit_func)(u32 *))
+{
+	timhdr_t *timhdr;
+	respkg_t *pkg;
+	void *pkgend;
+	u32 *instr, *ptr, togrow, oldtimsize;
+
+	ptr = instr = xmalloc(16384);
+
+	ptr = emit_func(ptr);
+
+	togrow = (void *) ptr - (void *) instr;
+
+	oldtimsize = tim->size;
+	tim_grow(tim, togrow);
+
+	timhdr = (void *) tim->data;
+	for (pkg = firstpkg(timhdr); pkg; pkg = nextpkg(timhdr, pkg))
+		if (le32toh(pkg->id) == name2id("GPP1"))
+			break;
+
+	if (!pkg)
+		die("Cannot find GPP1 package!");
+
+	pkgend = (void *) pkg + le32toh(pkg->size);
+	memmove(pkgend + togrow, pkgend,
+		oldtimsize - (pkgend - (void *) timhdr));
+	memcpy(pkgend, instr, togrow);
+
+	pkg->size = htole32(le32toh(pkg->size) + togrow);
+	timhdr->sizeofreserved = htole32(le32toh(timhdr->sizeofreserved) + togrow);
+
+	tim_rehash(tim);
+}
+
+void tim_emit_otp_read(image_t *tim)
+{
+	tim_emit_gpp1(tim, emit_otp_read);
 }

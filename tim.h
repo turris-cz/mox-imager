@@ -221,5 +221,6 @@ extern void tim_hash_obmi(int set);
 extern void tim_rehash(image_t *tim);
 extern void tim_sign(image_t *tim, EC_KEY *key);
 extern void tim_set_boot(image_t *tim, u32 boot);
+extern void tim_emit_otp_read(image_t *tim);
 
 #endif /* _TIM_H_ */

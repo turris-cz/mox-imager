@@ -109,6 +109,7 @@ static void help(void)
 		"  -o, --output=IMAGE     output SPI NOR flash image to IMAGE\n"
 		"  -k, --key=KEY          read ECDSA-521 private key from file KEY\n"
 		"  -r, --random-seed=FILE read random seed from file\n"
+		"  -R, --otp-read         read OTP memory\n"
 		"  -g, --gen-key=KEY      generate ECDSA-521 private key to file KEY\n"
 		"  -s, --sign             sign TIM image with ECDSA-521 private key\n"
 		"  -u, --hash-u-boot      save OBMI (U-Boot) image hash to TIM\n"
@@ -123,6 +124,7 @@ static const struct option long_options[] = {
 	{ "output",		required_argument,	0,	'o' },
 	{ "key",		required_argument,	0,	'k' },
 	{ "random-seed",	required_argument,	0,	'r' },
+	{ "otp-read",		no_argument,		0,	'R' },
 	{ "gen-key",		required_argument,	0,	'g' },
 	{ "sign",		no_argument,		0,	's' },
 	{ "hash-u-boot",	no_argument,		0,	'u' },
@@ -133,18 +135,18 @@ static const struct option long_options[] = {
 int main(int argc, char **argv)
 {
 	const char *tty, *pin, *output, *keyfile, *seed, *genkey;
-	int sign, hash_u_boot;
+	int sign, hash_u_boot, otp_read;
 	image_t *tim;
 	int nimages;
 
 	tty = pin = output = keyfile = seed = genkey = NULL;
-	sign = hash_u_boot = 0;
+	sign = hash_u_boot = otp_read = 0;
 
 	while (1) {
 		int optidx;
 		char c;
 
-		c = getopt_long(argc, argv, "D:p:o:k:r:g:suh", long_options, NULL);
+		c = getopt_long(argc, argv, "D:p:o:k:r:Rg:suh", long_options, NULL);
 		if (c == -1)
 			break;
 
@@ -174,6 +176,9 @@ int main(int argc, char **argv)
 				die("Random seed file already given");
 			seed = optarg;
 			break;
+		case 'R':
+			otp_read = 1;
+			break;
 		case 'g':
 			if (genkey)
 				die("File to which generate key already given");
@@ -189,22 +194,20 @@ int main(int argc, char **argv)
 			help();
 			break;
 		case '?':
-			fprintf(stderr, "Try 'mox-imager --help' for more information.\n");
-			exit(EXIT_FAILURE);
+			die("Try 'mox-imager --help' for more information.");
 		default:
 			die("Error parsing command line");
 		}
 	}
 
-	if (tty && output) {
-		fprintf(stderr, "Options --device and --output cannot be used together.\n");
-		exit(EXIT_FAILURE);
-	}
+	if (tty && output)
+		die("Options --device and --output cannot be used together.");
 
-	if (sign && !keyfile) {
-		fprintf(stderr, "Option --key must be given when signing.\n");
-		exit(EXIT_FAILURE);
-	}
+	if (sign && !keyfile)
+		die("Option --key must be given when signing.");
+
+	if (otp_read && !tty)
+		die("Option --device must be specified when reading OTP.");
 
 	if (genkey) {
 		if (!seed)
@@ -231,6 +234,9 @@ int main(int argc, char **argv)
 
 	tim = image_find(TIMH_ID);
 	tim_parse(tim, &nimages);
+
+	if (otp_read)
+		tim_emit_otp_read(tim);
 
 	tim_hash_obmi(hash_u_boot);
 
@@ -267,6 +273,11 @@ int main(int argc, char **argv)
 
 			printf("Sending image type %s\n", id2name(imgtype));
 			sendimage(img, i == nimages - 1);
+
+			if (otp_read) {
+				do_otp_read();
+				break;
+			}
 		}
 
 		closewtp();

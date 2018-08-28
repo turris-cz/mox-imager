@@ -19,7 +19,7 @@ static inline const char *id2name(u32 type)
 {
 	static unsigned char name[5];
 
-	*(u32 *) name = htobe32(type);
+	*(u32 *) name = be32toh(type);
 	name[4] = 0;
 
 	return (const char *) name;

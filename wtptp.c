@@ -267,3 +267,31 @@ void sendimage(image_t *img, int fast)
 
 	sendcmd(0x30, 0, 0, 0, 0, NULL, &resp);
 }
+
+void do_otp_read(void)
+{
+	u8 buf[69];
+	int i, j;
+
+	readatleast(buf, 5);
+	if (memcmp(buf, "OTP\r\n", 5))
+		die("Wrong reply: \"%.*s\"", 5, buf);
+
+	for (i = 0; i < 44; ++i) {
+		u64 val;
+
+		readatleast(buf, 69);
+
+		if (buf[1] != ' ' || buf[34] != ' ' || buf[67] != '\r'
+		    || buf[68] != '\n')
+			die("Wrong reply when reading OTP row %i", i);
+
+		val = 0;
+		for (j = 0; j < 32; ++j) {
+			val |= (u64) (buf[j + 2] == '1') << (63 - j);
+			val |= (u64) (buf[j + 35] == '1') << (31 - j);
+		}
+		printf("OTP row %i %016llx %s\n", i, val,
+		       buf[0] == '1' ? "locked" : "not locked");
+	}
+}
