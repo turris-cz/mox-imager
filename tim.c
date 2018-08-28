@@ -408,48 +408,41 @@ static u32 name2id(const char *name)
 	return htole32(htobe32(*(u32 *) name));
 }
 
-u32 *_emit(u32 *ptr, u32 id, int params, ...)
-{
-	va_list ap;
-	int i;
-
-	*ptr++ = htole32(id);
-
-	va_start(ap, params);
-	for (i = 0; i < params; ++i)
-		*ptr++ = htole32(va_arg(ap, u32));
-	va_end(ap);
-
-	return ptr;
-}
-
-#define emit(id, ...) ptr = _emit(ptr, id, ##__VA_ARGS__)
-#define NOP			0
-#define WRITE			1, 2
-#define READ			2, 2
-#define DELAY			3, 1
-#define WAIT_FOR_BIT_SET	4, 3
-#define WAIT_FOR_BIT_CLEAR	5, 3
-#define AND_VAL			6, 2
-#define OR_VAL			7, 2
-#define SET_BITFIELD		8, 3
-#define WAIT_FOR_BIT_PATTERN	9, 4
-#define LOAD_SM_ADDR		12, 2
-#define LOAD_SM_VAL		13, 2
-#define STORE_SM_ADDR		14, 2
-#define MOV_SM_SM		15, 2
-#define RSHIFT_SM_VAL		16, 2
-#define LSHIFT_SM_VAL		17, 2
-#define AND_SM_VAL		18, 2
-#define OR_SM_VAL		19, 2
-#define OR_SM_SM		20, 2
-#define AND_SM_SM		21, 2
-#define LABEL			24, 1
-#define TEST_ADDR_AND_BRANCH	25, 5
-#define TEST_SM_AND_BRANCH	26, 5
-#define BRANCH			27, 1
-#define ADD_SM_VAL		29, 2
-#define ADD_SM_SM		30, 2
+#define NOP				0
+#define WRITE				1
+#define READ				2
+#define DELAY				3
+#define WAIT_FOR_BIT_SET		4
+#define WAIT_FOR_BIT_CLEAR		5
+#define AND_VAL				6
+#define OR_VAL				7
+#define SET_BITFIELD			8
+#define WAIT_FOR_BIT_PATTERN		9
+#define TEST_IF_ZERO_AND_SET		10
+#define TEST_IF_NOT_ZERO_AND_SET	11
+#define LOAD_SM_ADDR			12
+#define LOAD_SM_VAL			13
+#define STORE_SM_ADDR			14
+#define MOV_SM_SM			15
+#define RSHIFT_SM_VAL			16
+#define LSHIFT_SM_VAL			17
+#define AND_SM_VAL			18
+#define OR_SM_VAL			19
+#define OR_SM_SM			20
+#define AND_SM_SM			21
+#define TEST_SM_IF_ZERO_AND_SET		22
+#define TEST_SM_IF_NOT_ZERO_AND_SET	23
+#define LABEL				24
+#define TEST_ADDR_AND_BRANCH		25
+#define TEST_SM_AND_BRANCH		26
+#define BRANCH				27
+#define END				28
+#define ADD_SM_VAL			29
+#define ADD_SM_SM			30
+#define SUB_SM_VAL			31
+#define SUB_SM_SM			32
+#define LOAD_SM_FROM_ADDR_IN_SM		33
+#define STORE_SM_TO_ADDR_IN_SM		34
 
 #define OP_EQ			1
 #define OP_NE			2
@@ -458,13 +451,58 @@ u32 *_emit(u32 *ptr, u32 id, int params, ...)
 #define OP_GT			5
 #define OP_GTE			6
 
-#define EFUSE_CTRL	0x40003430
-#define EFUSE_RW	0x40003434
-#define EFUSE_D0	0x40003438
-#define EFUSE_D1	0x4000343c
-#define EFUSE_AUX	0x40003440
+static const int instr_params[35] = {
+	[NOP]				= 0,
+	[WRITE]				= 2,
+	[READ]				= 2,
+	[DELAY]				= 1,
+	[WAIT_FOR_BIT_SET]		= 3,
+	[WAIT_FOR_BIT_CLEAR]		= 3,
+	[AND_VAL]			= 2,
+	[OR_VAL]			= 2,
+	[SET_BITFIELD]			= 3,
+	[WAIT_FOR_BIT_PATTERN]		= 4,
+	[TEST_IF_ZERO_AND_SET]		= 5,
+	[TEST_IF_NOT_ZERO_AND_SET]	= 5,
+	[LOAD_SM_ADDR]			= 2,
+	[LOAD_SM_VAL]			= 2,
+	[STORE_SM_ADDR]			= 2,
+	[MOV_SM_SM]			= 2,
+	[RSHIFT_SM_VAL]			= 2,
+	[LSHIFT_SM_VAL]			= 2,
+	[AND_SM_VAL]			= 2,
+	[OR_SM_VAL]			= 2,
+	[OR_SM_SM]			= 2,
+	[AND_SM_SM]			= 2,
+	[TEST_SM_IF_ZERO_AND_SET]	= 5,
+	[TEST_SM_IF_NOT_ZERO_AND_SET]	= 5,
+	[LABEL]				= 1,
+	[TEST_ADDR_AND_BRANCH]		= 5,
+	[TEST_SM_AND_BRANCH]		= 5,
+	[BRANCH]			= 1,
+	[END]				= 0,
+	[ADD_SM_VAL]			= 2,
+	[ADD_SM_SM]			= 2,
+	[SUB_SM_VAL]			= 2,
+	[SUB_SM_SM]			= 2,
+	[LOAD_SM_FROM_ADDR_IN_SM]	= 2,
+	[STORE_SM_TO_ADDR_IN_SM]	= 2,
+};
 
-#define EFUSE_RC(r,c)	((((r) & 0x3f) << 7) | ((c) & 0x7f))
+static inline void _emit(u32 **ptr, u32 id, ...)
+{
+	va_list ap;
+	int i;
+
+	*(*ptr)++ = htole32(id);
+
+	va_start(ap, id);
+	for (i = 0; i < instr_params[id]; ++i)
+		*(*ptr)++ = htole32(va_arg(ap, u32));
+	va_end(ap);
+}
+
+#define emit(id, ...) _emit(ptr, id, ##__VA_ARGS__)
 
 #define emit_putc(c)						\
 	do {							\
@@ -479,68 +517,77 @@ u32 *_emit(u32 *ptr, u32 id, int params, ...)
 			emit_putc((str)[i]);		\
 	} while (0);
 
-static u32 *emit_otp_read(u32 *ptr)
-{
-	emit_print("OTP\r\n");
+#define EFUSE_CTRL	0x40003430
+#define EFUSE_RW	0x40003434
+#define EFUSE_D0	0x40003438
+#define EFUSE_D1	0x4000343c
+#define EFUSE_AUX	0x40003440
 
-	emit(LOAD_SM_VAL, 4, 0);
-	emit(LABEL, 7);
+#define EFUSE_RC(r,c)	((((r) & 0x3f) << 7) | ((c) & 0x7f))
+
+static void emit_otp_read_row(u32 **ptr, u32 sm_row, u32 sm_store0,
+			      u32 sm_store1, u32 sm_sfb)
+{
 	emit(WRITE, EFUSE_CTRL, 0x4);
 	emit(DELAY, 1);
 	emit(OR_VAL, EFUSE_CTRL, 0x8);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x7, 0x3);
-	emit(STORE_SM_ADDR, 4, EFUSE_RW);
+	emit(LSHIFT_SM_VAL, sm_row, 7);
+	emit(STORE_SM_ADDR, sm_row, EFUSE_RW);
+	emit(RSHIFT_SM_VAL, sm_row, 7);
 	emit(DELAY, 1);
 	emit(OR_VAL, EFUSE_CTRL, 0x100);
 	emit(DELAY, 1);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x100, 0);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x6, 0x4);
 	emit(WAIT_FOR_BIT_SET, EFUSE_AUX, 0x80000000);
-	emit(LOAD_SM_ADDR, 0, EFUSE_D0);
-	emit(LOAD_SM_ADDR, 1, EFUSE_D1);
-
-	emit(TEST_ADDR_AND_BRANCH, EFUSE_AUX, 0x10, 0x10, OP_EQ, 8);
-	emit_print("0 ");
-	emit(BRANCH, 9);
-	emit(LABEL, 8);
-	emit_print("1 ");
-	emit(LABEL, 9);
-
-	emit(LOAD_SM_VAL, 2, 0x80000000);
-	emit(LABEL, 3);
-	emit(MOV_SM_SM, 3, 1);
-	emit(AND_SM_SM, 3, 2);
-	emit(TEST_SM_AND_BRANCH, 3, 0xffffffff, 0, OP_EQ, 1);
-	emit_putc('1');
-	emit(BRANCH, 2);
-	emit(LABEL, 1);
-	emit_putc('0');
-	emit(LABEL, 2);
-	emit(RSHIFT_SM_VAL, 2, 1);
-	emit(TEST_SM_AND_BRANCH, 2, 0xffffffff, 0, OP_NE, 3);
-	emit_putc(' ');
-
-	emit(LOAD_SM_VAL, 2, 0x80000000);
-	emit(LABEL, 6);
-	emit(MOV_SM_SM, 3, 0);
-	emit(AND_SM_SM, 3, 2);
-	emit(TEST_SM_AND_BRANCH, 3, 0xffffffff, 0, OP_EQ, 4);
-	emit_putc('1');
-	emit(BRANCH, 5);
-	emit(LABEL, 4);
-	emit_putc('0');
-	emit(LABEL, 5);
-	emit(RSHIFT_SM_VAL, 2, 1);
-	emit(TEST_SM_AND_BRANCH, 2, 0xffffffff, 0, OP_NE, 6);
-	emit_print("\r\n");
-
-	emit(ADD_SM_VAL, 4, 0x80);
-	emit(TEST_SM_AND_BRANCH, 4, 0xffffffff, 0x1600, OP_NE, 7);
-
-	return ptr;
+	emit(LOAD_SM_ADDR, sm_store0, EFUSE_D0);
+	emit(LOAD_SM_ADDR, sm_store1, EFUSE_D1);
+	emit(LOAD_SM_ADDR, sm_sfb, EFUSE_AUX);
+	emit(RSHIFT_SM_VAL, sm_sfb, 4);
 }
 
-static void tim_emit_gpp1(image_t *tim, u32 *(*emit_func)(u32 *))
+static void emit_print_sm(u32 **ptr, u32 sm, u32 *label)
+{
+	emit(LOAD_SM_VAL, 15, 0x80000000);
+	emit(LABEL, *label + 2);
+	emit(MOV_SM_SM, 3, sm);
+	emit(AND_SM_SM, 3, 15);
+	emit(TEST_SM_AND_BRANCH, 3, 0xffffffff, 0, OP_EQ, *label);
+	emit_putc('1');
+	emit(BRANCH, *label + 1);
+	emit(LABEL, *label);
+	emit_putc('0');
+	emit(LABEL, *label + 1);
+	emit(RSHIFT_SM_VAL, 15, 1);
+	emit(TEST_SM_AND_BRANCH, 15, 0xffffffff, 0, OP_NE, *label + 2);
+
+	*label += 3;
+}
+
+static void emit_otp_read(u32 **ptr)
+{
+	u32 label = 4;
+
+	emit_print("OTP\r\n");
+	emit(LOAD_SM_VAL, 0, 0);
+	emit(LABEL, 1);
+	emit_otp_read_row(ptr, 0, 1, 2, 3);
+	emit(TEST_SM_AND_BRANCH, 3, 1, 1, OP_EQ, 2);
+	emit_print("0 ");
+	emit(BRANCH, 3);
+	emit(LABEL, 2);
+	emit_print("1 ");
+	emit(LABEL, 3);
+	emit_print_sm(ptr, 2, &label);
+	emit_putc(' ');
+	emit_print_sm(ptr, 1, &label);
+	emit_print("\r\n");
+	emit(ADD_SM_VAL, 0, 1);
+	emit(TEST_SM_AND_BRANCH, 0, 0xffffffff, 44, OP_NE, 1);
+}
+
+static void tim_emit_gpp1(image_t *tim, void (*emit_func)(u32 **))
 {
 	timhdr_t *timhdr;
 	respkg_t *pkg;
@@ -549,7 +596,7 @@ static void tim_emit_gpp1(image_t *tim, u32 *(*emit_func)(u32 *))
 
 	ptr = instr = xmalloc(16384);
 
-	ptr = emit_func(ptr);
+	emit_func(&ptr);
 
 	togrow = (void *) ptr - (void *) instr;
 
