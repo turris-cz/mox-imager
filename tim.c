@@ -738,6 +738,7 @@ static void tim_emit_gpp1(image_t *tim, void (*emit_func)(u32 **))
 	memmove(pkgend + togrow, pkgend,
 		oldtimsize - (pkgend - (void *) timhdr));
 	memcpy(pkgend, instr, togrow);
+	free(instr);
 
 	pkg->size = htole32(le32toh(pkg->size) + togrow);
 	timhdr->sizeofreserved = htole32(le32toh(timhdr->sizeofreserved) + togrow);
