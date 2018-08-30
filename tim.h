@@ -7,13 +7,12 @@
 #define _TIM_H_
 
 #include <stdlib.h>
-#include <endian.h>
 #include <openssl/ec.h>
 #include "utils.h"
 #include "images.h"
 
-#define TIMH_ID	0x54494d48
-#define OBMI_ID 0x4f424d49
+#define TIMH_ID	name2id("TIMH")
+#define OBMI_ID name2id("OBMI")
 
 #define BOOTFS_SPINOR	0x5350490a
 #define BOOTFS_SPINAND	0x5350491a
@@ -81,16 +80,15 @@ typedef struct {
 	u32 hash[16];
 } keyinfo_t;
 
-#define RES_ID		0x4f505448
+#define RES_ID		name2id("OPTH")
 
 typedef struct {
 	u32 id;
 	u32 pkgs;
 } reshdr_t;
 
-#define PKG_PINP	0x50494e50
-#define PKG_TOKE	0x544f4b45
-#define PKG_Term	0x5465726d
+#define PKG_PINP	name2id("PINP")
+#define PKG_Term	name2id("Term")
 
 typedef struct {
 	u32 id;

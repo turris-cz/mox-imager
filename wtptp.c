@@ -268,6 +268,16 @@ void sendimage(image_t *img, int fast)
 	sendcmd(0x30, 0, 0, 0, 0, NULL, &resp);
 }
 
+static inline u64 decode_char(int row, u8 c)
+{
+	if (c == 'U')
+		return 1;
+	else if (c == '?')
+		return 0;
+	else
+		die("Error decoding character when reading OTP row %i", row);
+}
+
 void do_otp_read(void)
 {
 	u8 buf[69];
@@ -288,10 +298,10 @@ void do_otp_read(void)
 
 		val = 0;
 		for (j = 0; j < 32; ++j) {
-			val |= (u64) (buf[j + 2] == '1') << (63 - j);
-			val |= (u64) (buf[j + 35] == '1') << (31 - j);
+			val |= (u64) decode_char(i, buf[j + 2]) << (63 - j);
+			val |= (u64) decode_char(i, buf[j + 35]) << (31 - j);
 		}
 		printf("OTP row %i %016llx %s\n", i, val,
-		       buf[0] == '1' ? "locked" : "not locked");
+		       decode_char(i, buf[0]) ? "locked" : "not locked");
 	}
 }
