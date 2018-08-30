@@ -611,8 +611,6 @@ static inline void emit(u32 id, ...)
 	va_end(ap);
 }
 
-//#define emit(id, ...) _emit(pptr, id, ##__VA_ARGS__)
-
 #define emit_putc(c)						\
 	do {							\
 		emit(WRITE, 0xC0012004, (u32) (c));		\
