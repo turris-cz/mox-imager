@@ -11,6 +11,8 @@
 extern void gpp_emit_start(void);
 extern void *gpp_emit_get(u32 *size);
 extern void gpp_emit_end(void);
-extern void gpp_emit_otp_read(void);
+extern void gpp_emit_otp_read(u32 *args);
+extern void gpp_emit_otp_write(u32 *args);
+extern void gpp_emit_otp_lock(u32 *args);
 
 #endif /* _GPP_H_ */

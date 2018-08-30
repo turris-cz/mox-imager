@@ -154,42 +154,62 @@ static inline void emit(u32 id, ...)
 	va_end(ap);
 }
 
-#define emit_putc(c)						\
-	do {							\
-		emit(WRITE, 0xc0012004, (u32) (c));		\
-		emit(WAIT_FOR_BIT_SET, 0xc001200c, 0x20, 1);	\
-	} while (0);
+static inline void emit_putc(char c)
+{
+	emit(WRITE, 0xc0012004, (u32) c);
+	emit(WAIT_FOR_BIT_SET, 0xc001200c, 0x20, 1);
+}
 
-#define emit_print(str)					\
-	do {						\
-		int i;					\
-		for (i = 0; i < strlen((str)); ++i)	\
-			emit_putc((str)[i]);		\
-	} while (0);
+static inline void emit_print(const char *str)
+{
+	while (*str)
+		emit_putc(*str++);
+}
 
-#define EFUSE_CTRL	0x40003430
-#define EFUSE_RW	0x40003434
-#define EFUSE_D0	0x40003438
-#define EFUSE_D1	0x4000343c
-#define EFUSE_AUX	0x40003440
+static inline void label(u32 lbl)
+{
+	emit(LABEL, lbl);
+}
+
+static inline void branch(u32 lbl)
+{
+	emit(BRANCH, lbl);
+}
+
+static inline void delay(u32 msecs)
+{
+	emit(DELAY, msecs);
+}
+
+#define EFUSE_CTRL		0x40003430
+#define EFUSE_RW		0x40003434
+#define EFUSE_D0		0x40003438
+#define EFUSE_D1		0x4000343c
+#define EFUSE_AUX		0x40003440
+#define EFUSE_MASTER_CTRL	0x400037f4
 
 #define EFUSE_RC(r,c)	((((r) & 0x3f) << 7) | ((c) & 0x7f))
 
-static void emit_otp_read_row(sm32 row, sm32 low32, sm32 high32, sm32 locked)
+static void emit_otp_read_row(int row_in_sm, u32 row, sm32 low32, sm32 high32,
+			      sm32 locked)
 {
 	emit(WRITE, EFUSE_CTRL, 0x4);
-	emit(DELAY, 1);
+	delay(1);
 	emit(OR_VAL, EFUSE_CTRL, 0x8);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x7, 0x3);
-	emit(LSHIFT_SM_VAL, row, 7);
-	emit(STORE_SM_ADDR, row, EFUSE_RW);
-	emit(RSHIFT_SM_VAL, row, 7);
-	emit(DELAY, 1);
+	if (row_in_sm) {
+		emit(LSHIFT_SM_VAL, row, 7);
+		emit(STORE_SM_ADDR, row, EFUSE_RW);
+		emit(RSHIFT_SM_VAL, row, 7);
+	} else {
+		emit(WRITE, EFUSE_RW, EFUSE_RC(row, 0));
+	}
+	delay(1);
 	emit(OR_VAL, EFUSE_CTRL, 0x100);
-	emit(DELAY, 1);
+	delay(1);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x100, 0);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x6, 0x4);
-	emit(WAIT_FOR_BIT_SET, EFUSE_AUX, 0x80000000);
+	emit(WAIT_FOR_BIT_SET, EFUSE_AUX, 0x80000000, 10);
 	emit(LOAD_SM_ADDR, low32, EFUSE_D0);
 	emit(LOAD_SM_ADDR, high32, EFUSE_D1);
 	emit(LOAD_SM_ADDR, locked, EFUSE_AUX);
@@ -202,38 +222,148 @@ static void emit_print_sm(sm32 val)
 	VARS(mask, val_and_mask);
 
 	emit(LOAD_SM_VAL, mask, 0x80000000);
-	emit(LABEL, next_bit);
+	label(next_bit);
 	emit(MOV_SM_SM, val_and_mask, val);
 	emit(AND_SM_SM, val_and_mask, mask);
 	emit(TEST_SM_AND_BRANCH, val_and_mask, 0xffffffff, 0, OP_EQ, print_0);
 	emit_putc('U');
-	emit(BRANCH, printed);
-	emit(LABEL, print_0);
+	branch(printed);
+	label(print_0);
 	emit_putc('?');
-	emit(LABEL, printed);
+	label(printed);
 	emit(RSHIFT_SM_VAL, mask, 1);
 	emit(TEST_SM_AND_BRANCH, mask, 0xffffffff, 0, OP_NE, next_bit);
 }
 
-void gpp_emit_otp_read(void)
+void gpp_emit_otp_read(u32 *args)
 {
 	LABELS(again, print_0, printed);
 	VARS(row, low32, high32, locked);
 
 	emit_print("OTP\r\n");
 	emit(LOAD_SM_VAL, row, 0);
-	emit(LABEL, again);
-	emit_otp_read_row(row, low32, high32, locked);
+	label(again);
+	emit_otp_read_row(1, row, low32, high32, locked);
 	emit(TEST_SM_AND_BRANCH, locked, 1, 0, OP_EQ, print_0);
 	emit_print("U ");
-	emit(BRANCH, printed);
-	emit(LABEL, print_0);
+	branch(printed);
+	label(print_0);
 	emit_print("? ");
-	emit(LABEL, printed);
+	label(printed);
 	emit_print_sm(high32);
 	emit_putc(' ');
 	emit_print_sm(low32);
 	emit_print("\r\n");
 	emit(ADD_SM_VAL, row, 1);
-	emit(TEST_SM_AND_BRANCH, row, 0xffffffff, 44, OP_NE, again);
+	emit(TEST_SM_AND_BRANCH, row, 0xff, 44, OP_NE, again);
+}
+
+static void emit_efuse_write_enable(void)
+{
+	LABELS(seq_again);
+	VARS(seq);
+	int i, seq_val;
+
+	emit(WRITE, EFUSE_CTRL, 0);
+	delay(1);
+	emit(WRITE, EFUSE_MASTER_CTRL, 0x5a);
+	emit(WRITE, EFUSE_CTRL, 0x100);
+	emit(LOAD_SM_VAL, seq, 0);
+	label(seq_again);
+	seq_val = 0x18d;
+	for (i = 0; i < 10; ++i) {
+		emit(WRITE, EFUSE_CTRL, (seq_val & 1) ? 0x300 : 0x100);
+		emit(WRITE, EFUSE_CTRL, (seq_val & 1) ? 0x700 : 0x500);
+		seq_val >>= 1;
+	}
+	emit(ADD_SM_VAL, seq, 1);
+	emit(TEST_SM_AND_BRANCH, seq, 7, 6, OP_NE, seq_again);
+	emit(WRITE, EFUSE_CTRL, 0);
+	emit(WAIT_FOR_BIT_SET, EFUSE_AUX, 0x20000000, 10);
+}
+
+static void emit_efuse_write_disable(void)
+{
+	emit(WRITE, EFUSE_CTRL, 0x5);
+	emit(WRITE, EFUSE_CTRL, 0x405);
+	emit(WRITE, EFUSE_CTRL, 0x5);
+	emit(WRITE, EFUSE_MASTER_CTRL, 0);
+	delay(1);
+}
+
+void gpp_emit_otp_write(u32 *args)
+{
+	LABELS(fail, end, next_column, end_columns, skip_column, skip_l2h,
+	       fail_disable);
+	VARS(low32, high32, locked, column, rwreg);
+
+	if (args[0] > 43)
+		die("Invalid OTP row number %u", args[0]);
+
+	emit_efuse_write_enable();
+	emit_otp_read_row(0, args[0], low32, high32, locked);
+	emit(TEST_SM_AND_BRANCH, locked, 1, 1, OP_EQ, fail_disable);
+	emit(OR_SM_VAL, low32, args[1]);
+	emit(OR_SM_VAL, high32, args[2]);
+	emit(OR_VAL, EFUSE_CTRL, 0x8);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x7, 0);
+	delay(1);
+	emit(LOAD_SM_VAL, column, 0);
+	label(next_column);
+	emit(TEST_SM_AND_BRANCH, low32, 1, 1, OP_NE, skip_column);
+	emit(LOAD_SM_VAL, rwreg, EFUSE_RC(args[0], 0));
+	emit(OR_SM_SM, rwreg, column);
+	emit(STORE_SM_ADDR, rwreg, EFUSE_RW);
+	emit(OR_VAL, EFUSE_CTRL, 0x100);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x100, 0);
+	label(skip_column);
+	emit(ADD_SM_VAL, column, 1);
+	emit(RSHIFT_SM_VAL, low32, 1);
+	emit(TEST_SM_AND_BRANCH, column, 0xff, 64, OP_EQ, end_columns);
+	emit(TEST_SM_AND_BRANCH, column, 0xff, 32, OP_NE, skip_l2h);
+	emit(MOV_SM_SM, low32, high32);
+	label(skip_l2h);
+	branch(next_column);
+	label(end_columns);
+	emit(OR_VAL, EFUSE_CTRL, 0x4);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x3, 0x1);
+	emit_efuse_write_disable();
+	emit_otp_read_row(0, args[0], low32, high32, locked);
+	emit(OR_SM_VAL, low32, args[1]);
+	emit(OR_SM_VAL, high32, args[2]);
+	emit(TEST_SM_AND_BRANCH, low32, 0xffffffff, args[1], OP_NE, fail);
+	emit(TEST_SM_AND_BRANCH, high32, 0xffffffff, args[2], OP_NE, fail);
+	branch(end);
+	label(fail_disable);
+	emit_efuse_write_disable();
+	label(fail);
+//	emit(END); set fail sm...
+	label(end);
+}
+
+void gpp_emit_otp_lock(u32 *args)
+{
+	LABELS(fail_disable, end);
+	VARS(low32, high32, locked);
+
+	if (args[0] > 43)
+		die("Invalid OTP row number %u", args[0]);
+
+	emit_efuse_write_enable();
+	emit_otp_read_row(0, args[0], low32, high32, locked);
+	emit(TEST_SM_AND_BRANCH, locked, 1, 1, OP_EQ, fail_disable);
+	emit(OR_VAL, EFUSE_CTRL, 0x8);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x5, 0);
+	emit(OR_VAL, EFUSE_CTRL, 0x2);
+	delay(1);
+	emit(WRITE, EFUSE_RW, EFUSE_RC(args[0], 0));
+	emit(OR_VAL, EFUSE_CTRL, 0x100);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x100, 0);
+	emit(OR_VAL, EFUSE_CTRL, 0x4);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x3, 0x1);
+	emit_efuse_write_disable();
+	branch(end);
+	label(fail_disable);
+	emit_efuse_write_disable();
+	label(end);
 }

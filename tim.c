@@ -515,7 +515,7 @@ void tim_sign(image_t *tim, EC_KEY *key)
 	bn2tim(sig->s, platds->ECDSA.sig.s, 17);
 }
 
-static void tim_emit_gpp1(image_t *tim, void (*emit_func)(void))
+static void tim_emit_gpp1(image_t *tim, void (*emit_func)(u32 *), u32 *args)
 {
 	timhdr_t *timhdr;
 	respkg_t *pkg;
@@ -525,7 +525,7 @@ static void tim_emit_gpp1(image_t *tim, void (*emit_func)(void))
 	tim_minimal_image(tim);
 
 	gpp_emit_start();
-	emit_func();
+	emit_func(args);
 	instrs = gpp_emit_get(&togrow);
 
 	oldtimsize = tim->size;
@@ -553,5 +553,5 @@ static void tim_emit_gpp1(image_t *tim, void (*emit_func)(void))
 
 void tim_emit_otp_read(image_t *tim)
 {
-	tim_emit_gpp1(tim, gpp_emit_otp_read);
+	tim_emit_gpp1(tim, gpp_emit_otp_read, NULL);
 }
