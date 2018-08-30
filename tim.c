@@ -502,7 +502,7 @@ void tim_sign(image_t *tim, EC_KEY *key)
 
 	printf("OTP key hash: ");
 	for (i = 0; i < 16; ++i)
-		printf("%08x%c", hash[i], i == 15 ? '\n' : ' ');
+		printf("%08x%c", htole32(hash[i]), i == 15 ? '\n' : ' ');
 
 	image_hash(HASH_SHA512, tim->data, (u8 *) &platds->ECDSA.sig - tim->data,
 		   hash, -1);
