@@ -42,7 +42,7 @@ static void readatleast(void *buf, size_t size)
 	}
 }
 
-static void writeorfail(const void *buf, size_t size)
+static void xwrite(const void *buf, size_t size)
 {
 	ssize_t res;
 
@@ -76,7 +76,7 @@ void openwtp(const char *path)
 	opts.c_cflag |= CS8;
 	tcsetattr(wtpfd, TCSANOW, &opts);
 
-	writeorfail("wtp\r", 4);
+	xwrite("wtp\r", 4);
 	readatleast(buf, 5);
 	if (memcmp(buf, "wtp\r\n", 5))
 		die("Wrong reply: \"%.*s\"", 5, buf);
@@ -115,7 +115,7 @@ static void _sendcmd(u8 cmd, u8 seq, u8 cid, u8 flags, u32 len,
 	if (len)
 		memcpy(buf + 8, data, len);
 
-	writeorfail(buf, 8 + len);
+	xwrite(buf, 8 + len);
 	free(buf);
 
 	if (resp)
@@ -158,7 +158,7 @@ static void preamble(void)
 {
 	u8 buf[6];
 
-	writeorfail("\x00\xd3\x02\x2b", 4);
+	xwrite("\x00\xd3\x02\x2b", 4);
 	readatleast(buf, 4);
 
 	if (!memcmp(buf, "TIM-", 4)) {
@@ -244,7 +244,7 @@ void sendimage(image_t *img, int fast)
 			tosend = img->size - sent;
 
 		if (fast)
-			writeorfail(img->data + sent, tosend);
+			xwrite(img->data + sent, tosend);
 		else
 			sendcmd(0x22, seq, 0, 0, tosend, img->data + sent,
 				&resp);
