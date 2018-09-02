@@ -19,7 +19,7 @@
 
 static int wtpfd;
 
-static void readatleast(void *buf, size_t size)
+static void xread(void *buf, size_t size)
 {
 	ssize_t rd, res;
 	struct pollfd pfd;
@@ -77,7 +77,7 @@ void openwtp(const char *path)
 	tcsetattr(wtpfd, TCSANOW, &opts);
 
 	xwrite("wtp\r", 4);
-	readatleast(buf, 5);
+	xread(buf, 5);
 	if (memcmp(buf, "wtp\r\n", 5))
 		die("Wrong reply: \"%.*s\"", 5, buf);
 }
@@ -89,7 +89,7 @@ void closewtp(void)
 
 static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
 {
-	readatleast(resp, 6);
+	xread(resp, 6);
 
 	if (resp->cmd != cmd || resp->seq != seq || resp->cid != cid)
 		die("Comparison fail: cmd[%02x %02x %02x] != "
@@ -97,7 +97,7 @@ static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
 		    resp->cid);
 
 	if (resp->len > 0)
-		readatleast(((void *) resp) + 6, resp->len);
+		xread(((void *) resp) + 6, resp->len);
 }
 
 static void _sendcmd(u8 cmd, u8 seq, u8 cid, u8 flags, u32 len,
@@ -159,11 +159,11 @@ static void preamble(void)
 	u8 buf[6];
 
 	xwrite("\x00\xd3\x02\x2b", 4);
-	readatleast(buf, 4);
+	xread(buf, 4);
 
 	if (!memcmp(buf, "TIM-", 4)) {
-		readatleast(buf, 5);
-		readatleast(buf, 4);
+		xread(buf, 5);
+		xread(buf, 4);
 	}
 
 	if (memcmp(buf, "\x00\xd3\x02\x2b", 4))
@@ -283,14 +283,14 @@ void do_otp_read(void)
 	u8 buf[69];
 	int i, j;
 
-	readatleast(buf, 5);
+	xread(buf, 5);
 	if (memcmp(buf, "OTP\r\n", 5))
 		die("Wrong reply: \"%.*s\"", 5, buf);
 
 	for (i = 0; i < 44; ++i) {
 		u64 val;
 
-		readatleast(buf, 69);
+		xread(buf, 69);
 
 		if (buf[1] != ' ' || buf[34] != ' ' || buf[67] != '\r'
 		    || buf[68] != '\n')
