@@ -546,7 +546,8 @@ static void tim_emit_gpp1(image_t *tim, void (*emit_func)(u32 *), u32 *args)
 	gpp_emit_end();
 
 	pkg->size = htole32(le32toh(pkg->size) + togrow);
-	timhdr->sizeofreserved = htole32(le32toh(timhdr->sizeofreserved) + togrow);
+	timhdr->sizeofreserved = htole32(le32toh(timhdr->sizeofreserved) +
+					 togrow);
 
 	tim_rehash(tim);
 }
@@ -554,4 +555,23 @@ static void tim_emit_gpp1(image_t *tim, void (*emit_func)(u32 *), u32 *args)
 void tim_emit_otp_read(image_t *tim)
 {
 	tim_emit_gpp1(tim, gpp_emit_otp_read, NULL);
+}
+
+void tim_emit_otp_write(image_t *tim, int nrows, int *rows, u64 *vals,
+			int *locks)
+{
+	int i;
+	u32 *args;
+
+	args = xmalloc(sizeof(u32) * (4 * nrows + 1));
+	args[0] = nrows;
+	for (i = 0; i < nrows; ++i) {
+		args[1 + 4 * i] = rows[i];
+		args[1 + 4 * i + 1] = vals[i] & 0xffffffff;
+		args[1 + 4 * i + 2] = vals[i] >> 32;
+		args[1 + 4 * i + 3] = locks[i];
+	}
+
+	tim_emit_gpp1(tim, gpp_emit_otp_write, args);
+	free(args);
 }

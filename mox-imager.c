@@ -12,6 +12,8 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <ctype.h>
+#include <time.h>
 #include <getopt.h>
 #include <openssl/ec.h>
 #include "tim.h"
@@ -53,7 +55,7 @@ static void generate_key(const char *keypath, const char *seedpath)
 	EC_KEY_free(key);
 }
 
-void save_flash_image(image_t *tim, const char *path)
+static void save_flash_image(image_t *tim, const char *path)
 {
 	int i, fd;
 	void *data;
@@ -100,20 +102,89 @@ void save_flash_image(image_t *tim, const char *path)
 		die("Cannot unmap %s: %m", path);
 }
 
+static int xdigit2i(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	else if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	else if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	else
+		return -1;
+}
+
+static u64 mac2u64(const char *mac)
+{
+	int i, d1, d2;
+	u64 res = 0;
+
+	for (i = 0; i < 6; ++i) {
+		d1 = xdigit2i(mac[i * 3]);
+		d2 = xdigit2i(mac[i * 3 + 1]);
+
+		if (d1 < 0 || d2 < 0 || (i < 5 && mac[i * 3 + 2] != ':') ||
+		    (i == 5 && mac[i * 3 + 2]))
+			die("Invalid MAC address \"%s\"", mac);
+
+		res |= ((u64) d1) << ((5 - i) * 8 + 4);
+		res |= ((u64) d2) << ((5 - i) * 8);
+	}
+
+	return res;
+}
+
+static void do_otp_write(image_t *tim, const char *serial_number,
+			 const char *mac_address, const char *board_version)
+{
+	u64 mac, vals[2];
+	u32 sn, bv;
+	int rows[2], locks[2];
+	char *end;
+	time_t tm;
+
+	sn = strtoul(serial_number, &end, 16);
+	if (*end)
+		die("Invalid serial number \"%s\"", serial_number);
+
+	bv = strtoul(board_version, &end, 10);
+	if (*end || bv > 0xff)
+		die("Invalid board version \"%s\"", board_version);
+
+	mac = mac2u64(mac_address);
+
+	printf("Will write serial number %08X, board version %u and MAC address %s into OTP.\n",
+	       sn, bv, mac_address);
+
+	rows[0] = 42;
+	vals[0] = (((u64) bv) << 48) | mac;
+	locks[0] = 1;
+
+	rows[1] = 43;
+	vals[1] = (((u64) time(NULL)) << 32) | sn;
+	locks[1] = 1;
+
+	tim_emit_otp_write(tim, 2, rows, vals, locks);
+}
+
 static void help(void)
 {
 	fprintf(stdout,
 		"Usage: mox-imager [OPTION]... [IMAGE]...\n\n"
-		"  -D, --device=TTY       upload images via UART to TTY\n"
-		"  -p, --pin=PIN          set PIN code (as hexadecimal number)\n"
-		"  -o, --output=IMAGE     output SPI NOR flash image to IMAGE\n"
-		"  -k, --key=KEY          read ECDSA-521 private key from file KEY\n"
-		"  -r, --random-seed=FILE read random seed from file\n"
-		"  -R, --otp-read         read OTP memory\n"
-		"  -g, --gen-key=KEY      generate ECDSA-521 private key to file KEY\n"
-		"  -s, --sign             sign TIM image with ECDSA-521 private key\n"
-		"  -u, --hash-u-boot      save OBMI (U-Boot) image hash to TIM\n"
-		"  -h, --help             show this help and exit\n"
+		"  -D, --device=TTY         upload images via UART to TTY\n"
+		"  -p, --pin=PIN            set PIN code (as hexadecimal number)\n"
+		"  -o, --output=IMAGE       output SPI NOR flash image to IMAGE\n"
+		"  -k, --key=KEY            read ECDSA-521 private key from file KEY\n"
+		"  -r, --random-seed=FILE   read random seed from file\n"
+		"  -R, --otp-read           read OTP memory\n"
+		"  -W, --otp-write          write OTP memory\n"
+		"      --serial-number=SN   serial number to write to OTP memory\n"
+		"      --mac-address=MAC    MAC address to write to OTP memory\n"
+		"      --board-version=BV   board version to write to OTP memory\n"
+		"  -g, --gen-key=KEY        generate ECDSA-521 private key to file KEY\n"
+		"  -s, --sign               sign TIM image with ECDSA-521 private key\n"
+		"  -u, --hash-u-boot        save OBMI (U-Boot) image hash to TIM\n"
+		"  -h, --help               show this help and exit\n"
 		"\n");
 	exit(EXIT_SUCCESS);
 }
@@ -125,6 +196,10 @@ static const struct option long_options[] = {
 	{ "key",		required_argument,	0,	'k' },
 	{ "random-seed",	required_argument,	0,	'r' },
 	{ "otp-read",		no_argument,		0,	'R' },
+	{ "otp-write",		no_argument,		0,	'W' },
+	{ "serial-number",	required_argument,	0,	'S' },
+	{ "mac-address",	required_argument,	0,	'M' },
+	{ "board-version",	required_argument,	0,	'B' },
 	{ "gen-key",		required_argument,	0,	'g' },
 	{ "sign",		no_argument,		0,	's' },
 	{ "hash-u-boot",	no_argument,		0,	'u' },
@@ -134,19 +209,22 @@ static const struct option long_options[] = {
 
 int main(int argc, char **argv)
 {
-	const char *tty, *pin, *output, *keyfile, *seed, *genkey;
-	int sign, hash_u_boot, otp_read;
+	const char *tty, *pin, *output, *keyfile, *seed, *genkey,
+		   *serial_number, *mac_address, *board_version;
+	int sign, hash_u_boot, otp_read, otp_write;
 	image_t *tim;
 	int nimages;
 
-	tty = pin = output = keyfile = seed = genkey = NULL;
-	sign = hash_u_boot = otp_read = 0;
+	tty = pin = output = keyfile = seed = genkey = serial_number =
+              mac_address = board_version = NULL;
+	sign = hash_u_boot = otp_read = otp_write = 0;
 
 	while (1) {
 		int optidx;
 		char c;
 
-		c = getopt_long(argc, argv, "D:p:o:k:r:Rg:suh", long_options, NULL);
+		c = getopt_long(argc, argv, "D:p:o:k:r:RWg:suh", long_options,
+				NULL);
 		if (c == -1)
 			break;
 
@@ -179,6 +257,24 @@ int main(int argc, char **argv)
 		case 'R':
 			otp_read = 1;
 			break;
+		case 'W':
+			otp_write = 1;
+			break;
+		case 'S':
+			if (serial_number)
+				die("Serial number already given");
+			serial_number = optarg;
+			break;
+		case 'M':
+			if (mac_address)
+				die("Mac address already given");
+			mac_address = optarg;
+			break;
+		case 'B':
+			if (board_version)
+				die("Board version already given");
+			board_version = optarg;
+			break;
 		case 'g':
 			if (genkey)
 				die("File to which generate key already given");
@@ -194,20 +290,26 @@ int main(int argc, char **argv)
 			help();
 			break;
 		case '?':
-			die("Try 'mox-imager --help' for more information.");
+			die("Try 'mox-imager --help' for more information");
 		default:
 			die("Error parsing command line");
 		}
 	}
 
 	if (tty && output)
-		die("Options --device and --output cannot be used together.");
+		die("Options --device and --output cannot be used together");
 
 	if (sign && !keyfile)
-		die("Option --key must be given when signing.");
+		die("Option --key must be given when signing");
 
-	if (otp_read && !tty)
-		die("Option --device must be specified when reading OTP.");
+	if ((otp_read || otp_write) && !tty)
+		die("Option --device must be specified when reading/writing OTP");
+
+	if (otp_read && otp_write)
+		die("Options to read and write OTP cannot be used together");
+
+	if (otp_write && (!serial_number || !mac_address || !board_version))
+		die("Serial number, MAC address and board version must be given when writing OTP");
 
 	if (genkey) {
 		if (!seed)
@@ -219,13 +321,16 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	}
 
-	if (otp_read) {
+	if (otp_read || otp_write) {
 		if (optind < argc)
-			die("Images given when trying to write OTP");
+			die("Images given when trying to read/write OTP");
 
 		tim = image_new(NULL, 0, TIMH_ID);
 		tim_minimal_image(tim);
-		tim_emit_otp_read(tim);
+		if (otp_write)
+			do_otp_write(tim, serial_number, mac_address, board_version);
+		else
+			tim_emit_otp_read(tim);
 
 		nimages = 1;
 	} else {
@@ -275,8 +380,8 @@ int main(int argc, char **argv)
 			printf("Sending image type %s\n", id2name(imgtype));
 			sendimage(img, i == nimages - 1);
 
-			if (otp_read) {
-				do_otp_read();
+			if (otp_read || otp_write) {
+				uart_otp_read();
 				break;
 			}
 		}

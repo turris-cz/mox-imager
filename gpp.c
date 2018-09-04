@@ -181,6 +181,8 @@ static inline void delay(u32 msecs)
 	emit(DELAY, msecs);
 }
 
+#define SP_DRAM_TOP		0x20010000
+
 #define EFUSE_CTRL		0x40003430
 #define EFUSE_RW		0x40003434
 #define EFUSE_D0		0x40003438
@@ -190,14 +192,15 @@ static inline void delay(u32 msecs)
 
 #define EFUSE_RC(r,c)	((((r) & 0x3f) << 7) | ((c) & 0x7f))
 
-static void emit_otp_read_row(int row_in_sm, u32 row, sm32 low32, sm32 high32,
+static void emit_otp_read_row(int type, u32 row, sm32 low32, sm32 high32,
 			      sm32 locked)
 {
 	emit(WRITE, EFUSE_CTRL, 0x4);
 	delay(1);
 	emit(OR_VAL, EFUSE_CTRL, 0x8);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x7, 0x3);
-	if (row_in_sm) {
+	if (type == 1) {
+		/* row number in sm */
 		emit(LSHIFT_SM_VAL, row, 7);
 		emit(STORE_SM_ADDR, row, EFUSE_RW);
 		emit(RSHIFT_SM_VAL, row, 7);
@@ -214,6 +217,7 @@ static void emit_otp_read_row(int row_in_sm, u32 row, sm32 low32, sm32 high32,
 	emit(LOAD_SM_ADDR, high32, EFUSE_D1);
 	emit(LOAD_SM_ADDR, locked, EFUSE_AUX);
 	emit(RSHIFT_SM_VAL, locked, 4);
+	emit(AND_SM_VAL, locked, 1);
 }
 
 static void emit_print_sm(sm32 val)
@@ -293,77 +297,128 @@ static void emit_efuse_write_disable(void)
 
 void gpp_emit_otp_write(u32 *args)
 {
-	LABELS(fail, end, next_column, end_columns, skip_column, skip_l2h,
-	       fail_disable);
-	VARS(low32, high32, locked, column, rwreg);
+	LABELS(next_column, end_columns, skip_column, skip_l2h,
+	       next_row, skip_row, row_not_skipped, skip_locking, row_again);
+	VARS(low32, high32, locked, column, rwreg, row, rows, mtop, tmp);
+	int i;
+	u32 top;
 
-	if (args[0] > 43)
-		die("Invalid OTP row number %u", args[0]);
+	if (args[0] > 44)
+		die("Invalid number of OTP rows to write (%u)", args[0]);
 
+	top = SP_DRAM_TOP;
+	for (i = 0; i < args[0]; ++i) {
+		if (args[1 + 3 * i] > 43)
+			die("Invalid OTP row to write (%u)", args[1 + 3 * i]);
+
+		/* row number */
+		emit(WRITE, top - 4, args[1 + 4 * i]);
+		/* low */
+		emit(WRITE, top - 8, args[1 + 4 * i + 1]);
+		/* high */
+		emit(WRITE, top - 12, args[1 + 4 * i + 2]);
+		/* lock */
+		emit(WRITE, top - 16, args[1 + 4 * i + 3] & 1);
+
+		top -= 16;
+	}
+
+	emit(LOAD_SM_VAL, mtop, SP_DRAM_TOP - 4);
+	emit(LOAD_SM_VAL, rows, args[0]);
+
+	label(next_row);
+	/* get row number from memory */
+	emit(LOAD_SM_FROM_ADDR_IN_SM, row, mtop);
+	emit(SUB_SM_VAL, mtop, 4);
+
+	label(row_again);
 	emit_efuse_write_enable();
-	emit_otp_read_row(0, args[0], low32, high32, locked);
-	emit(TEST_SM_AND_BRANCH, locked, 1, 1, OP_EQ, fail_disable);
-	emit(OR_SM_VAL, low32, args[1]);
-	emit(OR_SM_VAL, high32, args[2]);
+	emit_otp_read_row(1, row, low32, high32, locked);
+	emit(TEST_SM_AND_BRANCH, locked, 1, 1, OP_EQ, skip_row);
+
+	/* read low and high from memory and or it with values read from OTP */
+	emit(LOAD_SM_FROM_ADDR_IN_SM, tmp, mtop);
+	emit(SUB_SM_VAL, mtop, 4);
+	emit(OR_SM_SM, low32, tmp);
+	emit(LOAD_SM_FROM_ADDR_IN_SM, tmp, mtop);
+	emit(SUB_SM_VAL, mtop, 4);
+	emit(OR_SM_SM, high32, tmp);
+
+	/* start writing */
 	emit(OR_VAL, EFUSE_CTRL, 0x8);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x7, 0);
 	delay(1);
 	emit(LOAD_SM_VAL, column, 0);
+	emit(MOV_SM_SM, tmp, low32);
 	label(next_column);
-	emit(TEST_SM_AND_BRANCH, low32, 1, 1, OP_NE, skip_column);
-	emit(LOAD_SM_VAL, rwreg, EFUSE_RC(args[0], 0));
+	emit(TEST_SM_AND_BRANCH, tmp, 1, 1, OP_NE, skip_column);
+	emit(MOV_SM_SM, rwreg, row);
+	emit(LSHIFT_SM_VAL, rwreg, 7);
 	emit(OR_SM_SM, rwreg, column);
 	emit(STORE_SM_ADDR, rwreg, EFUSE_RW);
 	emit(OR_VAL, EFUSE_CTRL, 0x100);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x100, 0);
 	label(skip_column);
 	emit(ADD_SM_VAL, column, 1);
-	emit(RSHIFT_SM_VAL, low32, 1);
+	emit(RSHIFT_SM_VAL, tmp, 1);
 	emit(TEST_SM_AND_BRANCH, column, 0xff, 64, OP_EQ, end_columns);
 	emit(TEST_SM_AND_BRANCH, column, 0xff, 32, OP_NE, skip_l2h);
-	emit(MOV_SM_SM, low32, high32);
+	emit(MOV_SM_SM, tmp, high32);
 	label(skip_l2h);
 	branch(next_column);
 	label(end_columns);
 	emit(OR_VAL, EFUSE_CTRL, 0x4);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x3, 0x1);
-	emit_efuse_write_disable();
-	emit_otp_read_row(0, args[0], low32, high32, locked);
-	emit(OR_SM_VAL, low32, args[1]);
-	emit(OR_SM_VAL, high32, args[2]);
-	emit(TEST_SM_AND_BRANCH, low32, 0xffffffff, args[1], OP_NE, fail);
-	emit(TEST_SM_AND_BRANCH, high32, 0xffffffff, args[2], OP_NE, fail);
-	branch(end);
-	label(fail_disable);
-	emit_efuse_write_disable();
-	label(fail);
-//	emit(END); set fail sm...
-	label(end);
-}
-
-void gpp_emit_otp_lock(u32 *args)
-{
-	LABELS(fail_disable, end);
-	VARS(low32, high32, locked);
-
-	if (args[0] > 43)
-		die("Invalid OTP row number %u", args[0]);
-
-	emit_efuse_write_enable();
-	emit_otp_read_row(0, args[0], low32, high32, locked);
-	emit(TEST_SM_AND_BRANCH, locked, 1, 1, OP_EQ, fail_disable);
+	/* locking */
+	emit(LOAD_SM_ADDR, tmp, mtop);
+	emit(SUB_SM_VAL, mtop, 4);
+	emit(TEST_SM_AND_BRANCH, tmp, 0xffffffff, 0, OP_EQ, skip_locking);
 	emit(OR_VAL, EFUSE_CTRL, 0x8);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x5, 0);
 	emit(OR_VAL, EFUSE_CTRL, 0x2);
 	delay(1);
-	emit(WRITE, EFUSE_RW, EFUSE_RC(args[0], 0));
+	emit(MOV_SM_SM, rwreg, row);
+	emit(LSHIFT_SM_VAL, rwreg, 7);
+	emit(STORE_SM_ADDR, rwreg, EFUSE_RW);
 	emit(OR_VAL, EFUSE_CTRL, 0x100);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x100, 0);
 	emit(OR_VAL, EFUSE_CTRL, 0x4);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x3, 0x1);
+	label(skip_locking);
+	/* end locking */
 	emit_efuse_write_disable();
-	branch(end);
-	label(fail_disable);
-	emit_efuse_write_disable();
-	label(end);
+	/* end writing */
+
+	delay(1);
+
+	/* now check if data were written correctly, if not, try again */
+	emit_otp_read_row(1, row, low32, high32, locked);
+	emit(ADD_SM_VAL, mtop, 12);
+	emit(LOAD_SM_FROM_ADDR_IN_SM, tmp, mtop);
+	emit(OR_SM_SM, tmp, low32);
+	emit(SUB_SM_SM, tmp, low32);
+	emit(TEST_SM_AND_BRANCH, tmp, 0xffffffff, 0, OP_NE, row_again);
+	emit(SUB_SM_VAL, mtop, 4);
+	emit(LOAD_SM_FROM_ADDR_IN_SM, tmp, mtop);
+	emit(ADD_SM_VAL, mtop, 4);
+	emit(OR_SM_SM, tmp, high32);
+	emit(SUB_SM_SM, tmp, high32);
+	emit(TEST_SM_AND_BRANCH, tmp, 0xffffffff, 0, OP_NE, row_again);
+	emit(SUB_SM_VAL, mtop, 8);
+	emit(LOAD_SM_FROM_ADDR_IN_SM, tmp, mtop);
+	emit(ADD_SM_VAL, mtop, 8);
+	emit(SUB_SM_SM, tmp, locked);
+	emit(TEST_SM_AND_BRANCH, tmp, 1, 0, OP_NE, row_again);
+	emit(SUB_SM_VAL, mtop, 12);
+	/* data were written correctly */
+
+	branch(row_not_skipped);
+	label(skip_row);
+	emit(SUB_SM_VAL, mtop, 12);
+	label(row_not_skipped);
+	/* continue with next row */
+	emit(SUB_SM_VAL, rows, 1);
+	emit(TEST_SM_AND_BRANCH, rows, 0xffffffff, 0, OP_NE, next_row);
+
+	gpp_emit_otp_read(NULL);
 }

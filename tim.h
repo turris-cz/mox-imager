@@ -221,5 +221,7 @@ extern void tim_sign(image_t *tim, EC_KEY *key);
 extern void tim_set_boot(image_t *tim, u32 boot);
 extern void tim_minimal_image(image_t *tim);
 extern void tim_emit_otp_read(image_t *tim);
+extern void tim_emit_otp_write(image_t *tim, int nrows, int *rows, u64 *vals,
+			       int *locks);
 
 #endif /* _TIM_H_ */

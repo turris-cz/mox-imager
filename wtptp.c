@@ -278,7 +278,7 @@ static inline u64 decode_char(int row, u8 c)
 		die("Error decoding character when reading OTP row %i", row);
 }
 
-void do_otp_read(void)
+void uart_otp_read(void)
 {
 	u8 buf[69];
 	int i, j;
