@@ -13,7 +13,7 @@ clean:
 	rm -f mox-imager $(OBJS)
 
 mox-imager: $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o mox-imager $(OBJS)
+	$(CC) $(CFLAGS) -o mox-imager $(OBJS) $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
