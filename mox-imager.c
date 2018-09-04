@@ -219,13 +219,6 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	}
 
-	if (pin) {
-		u64 pinnum;
-
-		pinnum = strtoull(pin, NULL, 16);
-
-	}
-
 	if (otp_read) {
 		if (optind < argc)
 			die("Images given when trying to write OTP");
