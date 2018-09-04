@@ -208,8 +208,8 @@ static void emit_otp_read_row(int row_in_sm, u32 row, sm32 low32, sm32 high32,
 	emit(OR_VAL, EFUSE_CTRL, 0x100);
 	delay(1);
 	emit(SET_BITFIELD, EFUSE_CTRL, 0x100, 0);
-	emit(SET_BITFIELD, EFUSE_CTRL, 0x6, 0x4);
 	emit(WAIT_FOR_BIT_SET, EFUSE_AUX, 0x80000000, 10);
+	emit(SET_BITFIELD, EFUSE_CTRL, 0x6, 0x4);
 	emit(LOAD_SM_ADDR, low32, EFUSE_D0);
 	emit(LOAD_SM_ADDR, high32, EFUSE_D1);
 	emit(LOAD_SM_ADDR, locked, EFUSE_AUX);
