@@ -19,7 +19,7 @@
 
 static int wtpfd;
 
-static void readatleast(void *buf, size_t size)
+static void xread(void *buf, size_t size)
 {
 	ssize_t rd, res;
 	struct pollfd pfd;
@@ -42,7 +42,7 @@ static void readatleast(void *buf, size_t size)
 	}
 }
 
-static void writeorfail(const void *buf, size_t size)
+static void xwrite(const void *buf, size_t size)
 {
 	ssize_t res;
 
@@ -76,8 +76,8 @@ void openwtp(const char *path)
 	opts.c_cflag |= CS8;
 	tcsetattr(wtpfd, TCSANOW, &opts);
 
-	writeorfail("wtp\r", 4);
-	readatleast(buf, 5);
+	xwrite("wtp\r", 4);
+	xread(buf, 5);
 	if (memcmp(buf, "wtp\r\n", 5))
 		die("Wrong reply: \"%.*s\"", 5, buf);
 }
@@ -89,7 +89,7 @@ void closewtp(void)
 
 static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
 {
-	readatleast(resp, 6);
+	xread(resp, 6);
 
 	if (resp->cmd != cmd || resp->seq != seq || resp->cid != cid)
 		die("Comparison fail: cmd[%02x %02x %02x] != "
@@ -97,7 +97,7 @@ static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
 		    resp->cid);
 
 	if (resp->len > 0)
-		readatleast(((void *) resp) + 6, resp->len);
+		xread(((void *) resp) + 6, resp->len);
 }
 
 static void _sendcmd(u8 cmd, u8 seq, u8 cid, u8 flags, u32 len,
@@ -115,7 +115,7 @@ static void _sendcmd(u8 cmd, u8 seq, u8 cid, u8 flags, u32 len,
 	if (len)
 		memcpy(buf + 8, data, len);
 
-	writeorfail(buf, 8 + len);
+	xwrite(buf, 8 + len);
 	free(buf);
 
 	if (resp)
@@ -158,12 +158,12 @@ static void preamble(void)
 {
 	u8 buf[6];
 
-	writeorfail("\x00\xd3\x02\x2b", 4);
-	readatleast(buf, 4);
+	xwrite("\x00\xd3\x02\x2b", 4);
+	xread(buf, 4);
 
 	if (!memcmp(buf, "TIM-", 4)) {
-		readatleast(buf, 5);
-		readatleast(buf, 4);
+		xread(buf, 5);
+		xread(buf, 4);
 	}
 
 	if (memcmp(buf, "\x00\xd3\x02\x2b", 4))
@@ -244,7 +244,7 @@ void sendimage(image_t *img, int fast)
 			tosend = img->size - sent;
 
 		if (fast)
-			writeorfail(img->data + sent, tosend);
+			xwrite(img->data + sent, tosend);
 		else
 			sendcmd(0x22, seq, 0, 0, tosend, img->data + sent,
 				&resp);
@@ -283,14 +283,14 @@ void do_otp_read(void)
 	u8 buf[69];
 	int i, j;
 
-	readatleast(buf, 5);
+	xread(buf, 5);
 	if (memcmp(buf, "OTP\r\n", 5))
 		die("Wrong reply: \"%.*s\"", 5, buf);
 
 	for (i = 0; i < 44; ++i) {
 		u64 val;
 
-		readatleast(buf, 69);
+		xread(buf, 69);
 
 		if (buf[1] != ' ' || buf[34] != ' ' || buf[67] != '\r'
 		    || buf[68] != '\n')
