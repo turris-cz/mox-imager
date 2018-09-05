@@ -102,6 +102,31 @@ static void save_flash_image(image_t *tim, const char *path)
 		die("Cannot unmap %s: %m", path);
 }
 
+static u64 secded_ecc(u64 data)
+{
+	static const u64 pos[8] = {
+		0x145011110ff014ff, 0x24ff2222f000249f, 0x4c9f444400ff44d0,
+		0x84d08888ff0f8c50, 0x0931f0ff11110b21, 0x0b22ff002222fa32,
+		0xfa24000f4444ff24, 0xff280ff088880928
+	};
+	u64 ecc, tmp;
+	int i, j, t;
+
+	ecc = 0;
+	for (i = 0; i < 8; ++i) {
+		tmp = pos[i];
+		t = 0;
+		for (j = 0; j < 64; ++j) {
+			if (tmp & 1)
+				t ^= (data >> j) & 1;
+			tmp >>= 1;
+		}
+		ecc |= t << i;
+	}
+
+	return ecc;
+}
+
 static int xdigit2i(char c)
 {
 	if (c >= '0' && c <= '9')
