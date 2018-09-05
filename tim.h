@@ -96,8 +96,10 @@ typedef struct {
 	u32 data[];
 } respkg_t;
 
+#define DSALG_PKCS1_V1_5	3
 #define DSALG_ECDSA_256		5
 #define DSALG_ECDSA_521		6
+#define DSALG_PKCS1_V2_2	7
 #define SIG_SCHEME_ECDSA_P521_SHA256	0x0000b311
 #define SIG_SCHEME_ECDSA_P521_SHA512	0x0000b341
 
@@ -161,6 +163,22 @@ static inline const char *enc2name(u32 enc)
 		return "aes-tb-cts-cbc192";
 	case 0:
 		return "none";
+	default:
+		return "unknown";
+	}
+}
+
+static inline const char *dsalg2name(u32 dsalg)
+{
+	switch (dsalg) {
+	case DSALG_PKCS1_V1_5:
+		return "PKCS1 v1.5";
+	case DSALG_ECDSA_256:
+		return "ECDSA 256";
+	case DSALG_ECDSA_521:
+		return "ECDSA 521";
+	case DSALG_PKCS1_V2_2:
+		return "PKCS1 v2.2";
 	default:
 		return "unknown";
 	}

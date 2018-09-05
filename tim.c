@@ -214,6 +214,7 @@ void tim_parse(image_t *tim, int *numimagesp)
 	timhdr_t *timhdr;
 	imginfo_t *i, *start, *end;
 	respkg_t *pkg;
+	platds_t *platds;
 	u32 version, date, numimages, numkeys, bootfs, sizeofreserved;
 
 	if (tim->size < sizeof(timhdr_t))
@@ -247,6 +248,13 @@ void tim_parse(image_t *tim, int *numimagesp)
 	if (tim->size != tim_size(timhdr))
 		die("Invalid TIM length (%u, expected %u)", tim->size,
 		    tim_size(timhdr));
+
+	platds = (void *) reserved_area(timhdr) + sizeofreserved;
+	if (timhdr->trusted)
+		printf("Platform digital signature algorithm %s, key size %u "
+		       "bits, hash %s\n", dsalg2name(le32toh(platds->dsalg)),
+		       le32toh(platds->keysize),
+		       hash2name(le32toh(platds->hashalg)));
 
 	start = (imginfo_t *) (timhdr + 1);
 	end = start + numimages;
