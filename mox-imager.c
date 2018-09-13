@@ -209,6 +209,7 @@ static void help(void)
 		"  -g, --gen-key=KEY        generate ECDSA-521 private key to file KEY\n"
 		"  -s, --sign               sign TIM image with ECDSA-521 private key\n"
 		"  -u, --hash-u-boot        save OBMI (U-Boot) image hash to TIM\n"
+		"  -n, --no-u-boot          remove OBMI (U-Boot) image from TIM\n"
 		"  -h, --help               show this help and exit\n"
 		"\n");
 	exit(EXIT_SUCCESS);
@@ -228,6 +229,7 @@ static const struct option long_options[] = {
 	{ "gen-key",		required_argument,	0,	'g' },
 	{ "sign",		no_argument,		0,	's' },
 	{ "hash-u-boot",	no_argument,		0,	'u' },
+	{ "no-u-boot",		no_argument,		0,	'n' },
 	{ "help",		no_argument,		0,	'h' },
 	{ 0,			0,			0,	0 },
 };
@@ -236,19 +238,19 @@ int main(int argc, char **argv)
 {
 	const char *tty, *pin, *output, *keyfile, *seed, *genkey,
 		   *serial_number, *mac_address, *board_version;
-	int sign, hash_u_boot, otp_read, otp_write;
+	int sign, hash_u_boot, no_u_boot, otp_read, otp_write;
 	image_t *tim;
 	int nimages;
 
 	tty = pin = output = keyfile = seed = genkey = serial_number =
               mac_address = board_version = NULL;
-	sign = hash_u_boot = otp_read = otp_write = 0;
+	sign = hash_u_boot = no_u_boot = otp_read = otp_write = 0;
 
 	while (1) {
 		int optidx;
 		char c;
 
-		c = getopt_long(argc, argv, "D:p:o:k:r:RWg:suh", long_options,
+		c = getopt_long(argc, argv, "D:p:o:k:r:RWg:sunh", long_options,
 				NULL);
 		if (c == -1)
 			break;
@@ -311,6 +313,9 @@ int main(int argc, char **argv)
 		case 'u':
 			hash_u_boot = 1;
 			break;
+		case 'n':
+			no_u_boot = 1;
+			break;
 		case 'h':
 			help();
 			break;
@@ -366,6 +371,10 @@ int main(int argc, char **argv)
 			image_load(argv[optind]);
 
 		tim = image_find(TIMH_ID);
+		if (no_u_boot) {
+			tim_remove_image(tim, name2id("OBMI"));
+			tim_rehash(tim);
+		}
 		tim_parse(tim, &nimages);
 		tim_hash_obmi(hash_u_boot);
 	}

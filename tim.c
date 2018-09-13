@@ -96,7 +96,7 @@ static u32 getsizetohash(timhdr_t *timhdr)
 	return res - (void *) timhdr;
 }
 
-static void tim_remove_image(image_t *tim, u32 id)
+void tim_remove_image(image_t *tim, u32 id)
 {
 	timhdr_t *timhdr;
 	imginfo_t *img;
@@ -122,6 +122,15 @@ static void tim_remove_image(image_t *tim, u32 id)
 
 	timhdr->numimages = htole32(tim_nimages(timhdr) - 1);
 	tim->size -= sizeof(imginfo_t);
+
+	for (i = 0; i < tim_nimages(timhdr); ++i) {
+		img = tim_image(timhdr, i);
+		if (le32toh(img->id) == TIMH_ID) {
+			img->size = htole32(tim->size);
+			img->sizetohash = htole32(tim->size);
+			break;
+		}
+	}
 }
 
 static void tim_remove_pkg(image_t *tim, u32 id)
