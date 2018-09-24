@@ -3,6 +3,7 @@
  * 2018 by Marek Behun <marek.behun@nic.cz>
  */
 
+#define _GNU_SOURCE
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,18 @@
 #include "sharand.h"
 #include "key.h"
 #include "images.h"
+
+#include "wtmi.c"
+
+struct mox_builder_data {
+	u32 op;
+	u32 serial_number;
+	u32 manufacturing_time;
+	u32 mac_addr_low;
+	u32 mac_addr_high;
+	u32 board_version;
+	u32 otp_hash[8];
+};
 
 static void generate_key(const char *keypath, const char *seedpath)
 {
@@ -102,29 +115,49 @@ static void save_flash_image(image_t *tim, const char *path)
 		die("Cannot unmap %s: %m", path);
 }
 
-static u64 secded_ecc(u64 data)
+static void do_create_secure_image(const char *keyfile, const char *output)
 {
-	static const u64 pos[8] = {
-		0x145011110ff014ff, 0x24ff2222f000249f, 0x4c9f444400ff44d0,
-		0x84d08888ff0f8c50, 0x0931f0ff11110b21, 0x0b22ff002222fa32,
-		0xfa24000f4444ff24, 0xff280ff088880928
-	};
-	u64 ecc, tmp;
-	int i, j, t;
+	EC_KEY *key;
+	image_t *timh, *timn, *wtmi, *obmi;
+	void *buf;
+	int fd;
 
-	ecc = 0;
-	for (i = 0; i < 8; ++i) {
-		tmp = pos[i];
-		t = 0;
-		for (j = 0; j < 64; ++j) {
-			if (tmp & 1)
-				t ^= (data >> j) & 1;
-			tmp >>= 1;
-		}
-		ecc |= t << i;
-	}
+	wtmi = image_find(name2id("WTMI"));
+	obmi = image_new(NULL, 0, name2id("OBMI"));
+	obmi->size = (2 << 20) - 0x15000 - 0x10000;
 
-	return ecc;
+	buf = xmalloc(0x15000);
+	memset(buf, 0, 0x15000);
+
+	key = load_key(keyfile);
+
+	timh = image_new(NULL, 0, TIMH_ID);
+	tim_minimal_image(timh, 1);
+	tim_add_key(timh, name2id("CSK0"), key);
+	tim_sign(timh, key);
+	tim_parse(timh, NULL);
+
+	memcpy(buf, timh->data, timh->size);
+
+	timn = image_new(NULL, 0, TIMN_ID);
+	tim_minimal_image(timn, 2);
+	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, 0x4000, 1);
+	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, 0x15000, 0);
+	tim_sign(timn, key);
+	tim_parse(timn, NULL);
+
+	memcpy(buf + 0x1000, timn->data, timn->size);
+	memcpy(buf + 0x4000, wtmi->data, wtmi->size);
+
+	fd = open(output, O_RDWR | O_CREAT, 0644);
+	if (fd < 0)
+		die("Cannot open %s for writing: %m", output);
+
+	if (ftruncate(fd, 0) < 0)
+		die("Cannot trucate %s to size 0: %m", output);
+
+	write(fd, buf, 0x15000);
+	close(fd);
 }
 
 static int xdigit2i(char c)
@@ -159,14 +192,29 @@ static u64 mac2u64(const char *mac)
 	return res;
 }
 
-static void do_otp_write(image_t *tim, const char *serial_number,
-			 const char *mac_address, const char *board_version)
+struct mox_builder_data *find_mbd(void) {
+	struct mox_builder_data needle = {
+		0x05050505, htole32(0xdeaddead), 0,
+		htole32(0xdeadbeef), htole32(0xbeefdead), 0xb7b7b7b7,
+		0, 0, 0, 0, 0, 0, 0, 0
+	};
+	void *h, *n, *r;
+
+	h = wtmi_data;
+	n = &needle;
+	r = memmem(h, wtmi_data_size, n, sizeof(needle));
+	if (!r)
+		die("Cannot find MBD structure in WTMI image");
+
+	return r;
+}
+
+static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
+		      const char *mac_address, const char *board_version)
 {
-	u64 mac, vals[2];
+	u64 mac;
 	u32 sn, bv;
-	int rows[2], locks[2];
 	char *end;
-	time_t tm;
 
 	sn = strtoul(serial_number, &end, 16);
 	if (*end)
@@ -178,56 +226,53 @@ static void do_otp_write(image_t *tim, const char *serial_number,
 
 	mac = mac2u64(mac_address);
 
-	printf("Will write serial number %08X, board version %u and MAC address %s into OTP.\n",
+	printf("Deploying device SN %08X, board version %u, MAC %s\n",
 	       sn, bv, mac_address);
 
-	rows[0] = 42;
-	vals[0] = (((u64) bv) << 48) | mac;
-	locks[0] = 1;
-
-	rows[1] = 43;
-	vals[1] = (((u64) time(NULL)) << 32) | sn;
-	locks[1] = 1;
-
-	tim_emit_otp_write(tim, 2, rows, vals, locks);
+	mbd->op = htole32(1);
+	mbd->serial_number = htole32(sn);
+	mbd->manufacturing_time = htole32(time(NULL));
+	mbd->mac_addr_low = htole32(mac & 0xffffffff);
+	mbd->mac_addr_high = htole32(mac >> 32);
+	mbd->board_version = htole32(bv);
 }
 
 static void help(void)
 {
 	fprintf(stdout,
 		"Usage: mox-imager [OPTION]... [IMAGE]...\n\n"
-		"  -D, --device=TTY         upload images via UART to TTY\n"
-		"  -p, --pin=PIN            set PIN code (as hexadecimal number)\n"
-		"  -o, --output=IMAGE       output SPI NOR flash image to IMAGE\n"
-		"  -k, --key=KEY            read ECDSA-521 private key from file KEY\n"
-		"  -r, --random-seed=FILE   read random seed from file\n"
-		"  -R, --otp-read           read OTP memory\n"
-		"  -W, --otp-write          write OTP memory\n"
-		"      --serial-number=SN   serial number to write to OTP memory\n"
-		"      --mac-address=MAC    MAC address to write to OTP memory\n"
-		"      --board-version=BV   board version to write to OTP memory\n"
-		"  -g, --gen-key=KEY        generate ECDSA-521 private key to file KEY\n"
-		"  -s, --sign               sign TIM image with ECDSA-521 private key\n"
-		"  -u, --hash-u-boot        save OBMI (U-Boot) image hash to TIM\n"
-		"  -n, --no-u-boot          remove OBMI (U-Boot) image from TIM\n"
-		"  -h, --help               show this help and exit\n"
+		"  -D, --device=TTY           upload images via UART to TTY\n"
+		"  -o, --output=IMAGE         output SPI NOR flash image to IMAGE\n"
+		"  -k, --key=KEY              read ECDSA-521 private key from file KEY\n"
+		"  -r, --random-seed=FILE     read random seed from file\n"
+		"  -R, --otp-read             read OTP memory\n"
+		"  -d, --deploy               deploy device (write OTP memory)\n"
+		"      --serial-number=SN     serial number to write to OTP memory\n"
+		"      --mac-address=MAC      MAC address to write to OTP memory\n"
+		"      --board-version=BV     board version to write to OTP memory\n"
+		"  -g, --gen-key=KEY          generate ECDSA-521 private key to file KEY\n"
+		"  -s, --sign                 sign TIM image with ECDSA-521 private key\n"
+		"      --create-secure-image  create secure image\n"
+		"  -u, --hash-u-boot          save OBMI (U-Boot) image hash to TIM\n"
+		"  -n, --no-u-boot            remove OBMI (U-Boot) image from TIM\n"
+		"  -h, --help                 show this help and exit\n"
 		"\n");
 	exit(EXIT_SUCCESS);
 }
 
 static const struct option long_options[] = {
 	{ "device",		required_argument,	0,	'D' },
-	{ "pin",		required_argument,	0,	'p' },
 	{ "output",		required_argument,	0,	'o' },
 	{ "key",		required_argument,	0,	'k' },
 	{ "random-seed",	required_argument,	0,	'r' },
 	{ "otp-read",		no_argument,		0,	'R' },
-	{ "otp-write",		no_argument,		0,	'W' },
+	{ "deploy",		no_argument,		0,	'd' },
 	{ "serial-number",	required_argument,	0,	'S' },
 	{ "mac-address",	required_argument,	0,	'M' },
 	{ "board-version",	required_argument,	0,	'B' },
 	{ "gen-key",		required_argument,	0,	'g' },
 	{ "sign",		no_argument,		0,	's' },
+	{ "create-secure-image",no_argument,		0,	'c' },
 	{ "hash-u-boot",	no_argument,		0,	'u' },
 	{ "no-u-boot",		no_argument,		0,	'n' },
 	{ "help",		no_argument,		0,	'h' },
@@ -236,21 +281,22 @@ static const struct option long_options[] = {
 
 int main(int argc, char **argv)
 {
-	const char *tty, *pin, *output, *keyfile, *seed, *genkey,
+	const char *tty, *output, *keyfile, *seed, *genkey,
 		   *serial_number, *mac_address, *board_version;
-	int sign, hash_u_boot, no_u_boot, otp_read, otp_write;
+	int sign, hash_u_boot, no_u_boot, otp_read, deploy, create_secure_image;
 	image_t *tim;
 	int nimages;
 
-	tty = pin = output = keyfile = seed = genkey = serial_number =
+	tty = output = keyfile = seed = genkey = serial_number =
               mac_address = board_version = NULL;
-	sign = hash_u_boot = no_u_boot = otp_read = otp_write = 0;
+	sign = hash_u_boot = no_u_boot = otp_read = deploy =
+	     create_secure_image = 0;
 
 	while (1) {
 		int optidx;
 		char c;
 
-		c = getopt_long(argc, argv, "D:p:o:k:r:RWg:sunh", long_options,
+		c = getopt_long(argc, argv, "D:o:k:r:Rdg:sunh", long_options,
 				NULL);
 		if (c == -1)
 			break;
@@ -260,11 +306,6 @@ int main(int argc, char **argv)
 			if (tty)
 				die("Device already given");
 			tty = optarg;
-			break;
-		case 'p':
-			if (pin)
-				die("Pin already given");
-			pin = optarg;
 			break;
 		case 'o':
 			if (output)
@@ -284,8 +325,8 @@ int main(int argc, char **argv)
 		case 'R':
 			otp_read = 1;
 			break;
-		case 'W':
-			otp_write = 1;
+		case 'd':
+			deploy = 1;
 			break;
 		case 'S':
 			if (serial_number)
@@ -310,6 +351,9 @@ int main(int argc, char **argv)
 		case 's':
 			sign = 1;
 			break;
+		case 'c':
+			create_secure_image = 1;
+			break;
 		case 'u':
 			hash_u_boot = 1;
 			break;
@@ -326,20 +370,23 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (create_secure_image && (!keyfile || !output))
+		die("Options --key and --output must be given when creating secure image");
+
 	if (tty && output)
 		die("Options --device and --output cannot be used together");
 
 	if (sign && !keyfile)
 		die("Option --key must be given when signing");
 
-	if ((otp_read || otp_write) && !tty)
+	if ((otp_read || deploy) && !tty)
 		die("Option --device must be specified when reading/writing OTP");
 
-	if (otp_read && otp_write)
-		die("Options to read and write OTP cannot be used together");
+	if (otp_read && deploy)
+		die("Options to read OTP and deploy cannot be used together");
 
-	if (otp_write && (!serial_number || !mac_address || !board_version))
-		die("Serial number, MAC address and board version must be given when writing OTP");
+	if (deploy && (!serial_number || !mac_address || !board_version))
+		die("Serial number, MAC address and board version must be given when deploying device");
 
 	if (genkey) {
 		if (!seed)
@@ -351,18 +398,26 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	}
 
-	if (otp_read || otp_write) {
+	if (otp_read || deploy) {
+		struct mox_builder_data *mbd;
+		image_t *wtmi;
+
 		if (optind < argc)
 			die("Images given when trying to read/write OTP");
 
-		tim = image_new(NULL, 0, TIMH_ID);
-		tim_minimal_image(tim);
-		if (otp_write)
-			do_otp_write(tim, serial_number, mac_address, board_version);
-		else
-			tim_emit_otp_read(tim);
+		mbd = find_mbd();
 
-		nimages = 1;
+		if (deploy)
+			do_deploy(mbd, serial_number, mac_address, board_version);
+		else
+			mbd->op = 0;
+
+		tim = image_new(NULL, 0, TIMH_ID);
+		tim_minimal_image(tim, 0);
+		wtmi = image_new((void *) wtmi_data, wtmi_data_size, WTMI_ID);
+		tim_add_image(tim, wtmi, TIMH_ID, 0x1fff0000, 0, 1);
+		tim_rehash(tim);
+		nimages = 2;
 	} else {
 		if (optind == argc)
 			die("No images given, try -h for help");
@@ -370,21 +425,18 @@ int main(int argc, char **argv)
 		for (; optind < argc; ++optind)
 			image_load(argv[optind]);
 
+		if (create_secure_image) {
+			do_create_secure_image(keyfile, output);
+			exit(EXIT_SUCCESS);
+		}
+
 		tim = image_find(TIMH_ID);
 		if (no_u_boot) {
 			tim_remove_image(tim, name2id("OBMI"));
 			tim_rehash(tim);
 		}
 		tim_parse(tim, &nimages);
-		tim_hash_obmi(hash_u_boot);
-	}
-
-
-	if (pin) {
-		u64 pinnum = strtoull(pin, NULL, 16);
-
-		tim_add_pin(tim, pinnum);
-		printf("Added pin %016llx\n", pinnum);
+		tim_enable_hash(tim, OBMI_ID, hash_u_boot);
 	}
 
 	if (tty)
@@ -413,11 +465,12 @@ int main(int argc, char **argv)
 
 			printf("Sending image type %s\n", id2name(imgtype));
 			sendimage(img, i == nimages - 1);
+		}
 
-			if (otp_read || otp_write) {
-				uart_otp_read();
-				break;
-			}
+		if (otp_read) {
+			uart_otp_read();
+		} else if (deploy) {
+			uart_deploy();
 		}
 
 		closewtp();

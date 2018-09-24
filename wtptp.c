@@ -305,3 +305,7 @@ void uart_otp_read(void)
 		       decode_char(i, buf[0]) ? "locked" : "not locked");
 	}
 }
+
+void uart_deploy(void)
+{
+}

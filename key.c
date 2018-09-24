@@ -216,4 +216,3 @@ void key_get_tim_coords(const EC_KEY *key, u32 *x, u32 *y)
 err:
 	die("Cannot get key coordinates");
 }
-

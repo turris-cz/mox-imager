@@ -24,5 +24,6 @@ extern void closewtp(void);
 extern u32 selectimage(void);
 extern void sendimage(image_t *img, int fast);
 extern void uart_otp_read(void);
+extern void uart_deploy(void);
 
 #endif /* _WTPTP_H_ */

@@ -70,8 +70,11 @@ void image_hash(u32 alg, void *buf, size_t size, void *out, u32 hashaddr)
 
 image_t *image_new(void *data, u32 size, u32 id)
 {
-	static int tim;
 	int i;
+
+	for (i = 0; i < 32; ++i)
+		if (images[i].id == id)
+			die("More than one %s image", id2name(id));
 
 	for (i = 0; i < 32; ++i)
 		if (!images[i].id)
@@ -80,17 +83,50 @@ image_t *image_new(void *data, u32 size, u32 id)
 	if (i == 32)
 		die("Too many images");
 
-	if (id == TIMH_ID) {
-		if (tim)
-			die("More than one TIM image");
-		tim = 1;
-	}
-
 	images[i].id = id;
 	images[i].data = data;
 	images[i].size = size;
 
 	return images + i;
+}
+
+static void do_load(void *data, size_t data_size)
+{
+	if (!memcmp(data + 4, "HMIT", 4) || !memcmp(data + 4, "NMIT", 4)) {
+		timhdr_t *timhdr = data;
+		void *timdata;
+		size_t timsize;
+		int i, f;
+
+		timsize = tim_size(timhdr);
+
+		timdata = xmalloc(timsize);
+		memcpy(timdata, timhdr, timsize);
+		image_new(timdata, timsize, TIMH_ID);
+
+		f = 0;
+		for (i = 0; i < tim_nimages(timhdr); ++i) {
+			imginfo_t *img = tim_image(timhdr, i);
+			u32 entry, size;
+
+			if (!img)
+				break;
+
+			entry = le32toh(img->flashentryaddr);
+			size = le32toh(img->size);
+
+			if (!entry || data_size < entry + size)
+				continue;
+
+			image_new(data + entry, size, le32toh(img->id));
+			++f;
+		}
+
+		if (!f)
+			munmap(data, data_size);
+	} else {
+		image_new(data + 4, data_size - 4, le32toh(*(u32 *) data));
+	}
 }
 
 void image_load(const char *path)
@@ -118,40 +154,5 @@ void image_load(const char *path)
 
 	close(fd);
 
-	if (!memcmp(data + 4, "HMIT", 4)) {
-		timhdr_t *timhdr = data;
-		void *timdata;
-		size_t timsize;
-		int i, f;
-
-		timsize = tim_size(timhdr);
-
-		timdata = xmalloc(timsize);
-		memcpy(timdata, timhdr, timsize);
-		image_new(timdata, timsize, TIMH_ID);
-
-		f = 0;
-		for (i = 0; i < tim_nimages(timhdr); ++i) {
-			imginfo_t *img = tim_image(timhdr, i);
-			u32 entry, size;
-
-			if (!img)
-				break;
-
-			entry = le32toh(img->flashentryaddr);
-			size = le32toh(img->size);
-
-			if (!entry || st.st_size < entry + size)
-				continue;
-
-			image_new(data + entry, size, le32toh(img->id));
-			++f;
-		}
-
-		if (!f)
-			munmap(data, st.st_size);
-	} else {
-		image_new(data + 4, st.st_size - 4, le32toh(*(u32 *) data));
-	}
+	do_load(data, st.st_size);
 }
-
