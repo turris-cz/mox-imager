@@ -91,7 +91,7 @@ static void save_flash_image(image_t *tim, const char *path)
 		die("Cannot open %s for writing: %m", path);
 
 	if (ftruncate(fd, maxaddr) < 0)
-		die("Cannot trucate %s to size %u: %m", path, maxaddr);
+		die("Cannot truncate %s to size %u: %m", path, maxaddr);
 
 	data = mmap(NULL, maxaddr, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if (data == MAP_FAILED)
@@ -120,6 +120,7 @@ static void do_create_secure_image(const char *keyfile, const char *output)
 	EC_KEY *key;
 	image_t *timh, *timn, *wtmi, *obmi;
 	void *buf;
+	ssize_t wr;
 	int fd;
 
 	wtmi = image_find(name2id("WTMI"));
@@ -154,9 +155,14 @@ static void do_create_secure_image(const char *keyfile, const char *output)
 		die("Cannot open %s for writing: %m", output);
 
 	if (ftruncate(fd, 0) < 0)
-		die("Cannot trucate %s to size 0: %m", output);
+		die("Cannot truncate %s to size 0: %m", output);
 
-	write(fd, buf, 0x15000);
+	wr = write(fd, buf, 0x15000);
+	if (wr < 0)
+		die("Cannot write to %s: %m", output);
+	else if (wr < 0x15000)
+		die("Cannot write whole output %s", output);
+
 	close(fd);
 }
 
@@ -467,11 +473,10 @@ int main(int argc, char **argv)
 			sendimage(img, i == nimages - 1);
 		}
 
-		if (otp_read) {
+		if (otp_read)
 			uart_otp_read();
-		} else if (deploy) {
+		else if (deploy)
 			uart_deploy();
-		}
 
 		closewtp();
 	}

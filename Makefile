@@ -15,9 +15,6 @@ clean:
 mox-imager: $(OBJS)
 	$(CC) $(CFLAGS) -o mox-imager $(OBJS) $(LDFLAGS)
 
-%.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
-
 mox-imager.c: wtmi.c
 
 wtmi.c: wtmi.bin bin2c
@@ -25,3 +22,6 @@ wtmi.c: wtmi.bin bin2c
 
 bin2c: bin2c.o
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+
+%.o: %.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<

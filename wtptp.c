@@ -268,44 +268,76 @@ void sendimage(image_t *img, int fast)
 	sendcmd(0x30, 0, 0, 0, 0, NULL, &resp);
 }
 
-static inline u64 decode_char(int row, u8 c)
+static void eccread(void *_buf, size_t size)
 {
-	if (c == 'U')
-		return 1;
-	else if (c == '?')
-		return 0;
-	else
-		die("Error decoding character when reading OTP row %i", row);
+	static const u8 ecc[128] = {
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1,
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1,
+		0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1,
+		0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
+		0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
+		0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+	};
+	size_t i;
+	u8 *eccbuf, *buf;
+
+	buf = _buf;
+
+	eccbuf = xmalloc(size * 8);
+	xread(eccbuf, size * 8);
+
+	for (i = 0; i < size; ++i) {
+		int j;
+		u8 c;
+
+		c = 0;
+		for (j = 0; j < 8; ++j)
+			c |= ecc[eccbuf[i * 8 + j] & 0x7f] << j;
+
+		buf[i] = c;
+	}
+
+	free(eccbuf);
 }
 
 void uart_otp_read(void)
 {
-	u8 buf[69];
-	int i, j;
+	u8 buf[19];
+	int i;
 
-	xread(buf, 5);
-	if (memcmp(buf, "OTP\r\n", 5))
-		die("Wrong reply: \"%.*s\"", 5, buf);
+	eccread(buf, 4);
+	if (memcmp(buf, "OTP\n", 4))
+		die("Wrong reply: \"%.*s\"", 4, buf);
 
 	for (i = 0; i < 44; ++i) {
 		u64 val;
+		char *end;
 
-		xread(buf, 69);
+		eccread(buf, 19);
 
-		if (buf[1] != ' ' || buf[34] != ' ' || buf[67] != '\r'
-		    || buf[68] != '\n')
+		val = strtoull(buf + 2, &end, 16);
+
+		if ((buf[0] != '0' && buf[0] != '1') || buf[1] != ' '
+		    || buf[18] != '\n' || (u8 *) end != &buf[18])
 			die("Wrong reply when reading OTP row %i", i);
 
-		val = 0;
-		for (j = 0; j < 32; ++j) {
-			val |= (u64) decode_char(i, buf[j + 2]) << (63 - j);
-			val |= (u64) decode_char(i, buf[j + 35]) << (31 - j);
-		}
 		printf("OTP row %i %016llx %s\n", i, val,
-		       decode_char(i, buf[0]) ? "locked" : "not locked");
+		       buf[0] == '1' ? "locked" : "not locked");
 	}
 }
 
 void uart_deploy(void)
 {
+	u8 buf[142];
+
+	eccread(buf, 142);
+	if (memcmp(buf, "RAM", 3) || (buf[3] != '0' && buf[3] != '1') ||
+	    memcmp(buf + 4, "PUBK", 4))
+		die("Wrong reply: \"%.*s\"", 4, buf);
+
+	printf("\n");
+	printf("Found %i MiB RAM\n", buf[3] == '1' ? 1024 : 512);
+	printf("ECDSA Public Key: %.*s\n", 134, buf + 8);
 }
