@@ -20,8 +20,8 @@ mox-imager: $(OBJS)
 mox-imager.c: wtmi.c
 	touch mox-imager.c
 
-wtmi.c: wtmi.bin bin2c
-	./bin2c wtmi_data <wtmi.bin >wtmi.c
+wtmi.c: $(WTMI_PATH)/wtmi.bin bin2c
+	./bin2c wtmi_data <$(WTMI_PATH)/wtmi.bin >wtmi.c
 
 bin2c: bin2c.o
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
@@ -31,6 +31,5 @@ bin2c: bin2c.o
 
 .PHONY: wtmi.bin
 
-wtmi.bin:
+$(WTMI_PATH)/wtmi.bin:
 	make -C $(WTMI_PATH) DEPLOY=1
-	cp -f $(WTMI_PATH)/wtmi.bin .
