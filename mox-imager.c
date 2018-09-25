@@ -218,6 +218,7 @@ struct mox_builder_data *find_mbd(void) {
 static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 		      const char *mac_address, const char *board_version)
 {
+	image_t *tim;
 	u64 mac;
 	u32 sn, bv;
 	char *end;
@@ -241,6 +242,9 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 	mbd->mac_addr_low = htole32(mac & 0xffffffff);
 	mbd->mac_addr_high = htole32(mac >> 32);
 	mbd->board_version = htole32(bv);
+
+	tim = image_find(TIMH_ID);
+	tim_get_otp_hash(tim, mbd->otp_hash);
 }
 
 static void help(void)
@@ -291,7 +295,7 @@ int main(int argc, char **argv)
 		   *serial_number, *mac_address, *board_version;
 	int sign, hash_u_boot, no_u_boot, otp_read, deploy, create_secure_image;
 	image_t *tim;
-	int nimages;
+	int nimages, images_given;
 
 	tty = output = keyfile = seed = genkey = serial_number =
               mac_address = board_version = NULL;
@@ -404,11 +408,21 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	}
 
+	images_given = argc - optind;
+
+	for (; optind < argc; ++optind)
+		image_load(argv[optind]);
+
+	if (create_secure_image) {
+		do_create_secure_image(keyfile, output);
+		exit(EXIT_SUCCESS);
+	}
+
 	if (otp_read || deploy) {
 		struct mox_builder_data *mbd;
 		image_t *wtmi;
 
-		if (optind < argc)
+		if (otp_read && images_given)
 			die("Images given when trying to read/write OTP");
 
 		mbd = find_mbd();
@@ -418,6 +432,8 @@ int main(int argc, char **argv)
 		else
 			mbd->op = 0;
 
+		image_delete_all();
+
 		tim = image_new(NULL, 0, TIMH_ID);
 		tim_minimal_image(tim, 0);
 		wtmi = image_new((void *) wtmi_data, wtmi_data_size, WTMI_ID);
@@ -425,16 +441,8 @@ int main(int argc, char **argv)
 		tim_rehash(tim);
 		nimages = 2;
 	} else {
-		if (optind == argc)
+		if (!images_given)
 			die("No images given, try -h for help");
-
-		for (; optind < argc; ++optind)
-			image_load(argv[optind]);
-
-		if (create_secure_image) {
-			do_create_secure_image(keyfile, output);
-			exit(EXIT_SUCCESS);
-		}
 
 		tim = image_find(TIMH_ID);
 		if (no_u_boot) {

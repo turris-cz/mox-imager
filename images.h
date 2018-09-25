@@ -17,6 +17,7 @@ typedef struct {
 extern image_t *image_find(u32 id);
 extern void image_hash(u32 alg, void *buf, size_t size, void *out, u32 hashaddr);
 extern image_t *image_new(void *data, u32 size, u32 id);
+extern void image_delete_all(void);
 extern void image_load(const char *path);
 
 #endif /* _IMAGES_H_ */

@@ -90,6 +90,20 @@ image_t *image_new(void *data, u32 size, u32 id)
 	return images + i;
 }
 
+void image_delete_all(void)
+{
+	int i;
+
+	for (i = 0; i < 32; ++i) {
+		if (images[i].id)
+			if (images[i].id == TIMH_ID || images[i].id == TIMN_ID)
+				free(images[i].data);
+
+		images[i].id = images[i].size = 0;
+		images[i].data = NULL;
+	}
+}
+
 static void do_load(void *data, size_t data_size)
 {
 	if (!memcmp(data + 4, "HMIT", 4) || !memcmp(data + 4, "NMIT", 4)) {

@@ -281,25 +281,20 @@ static void eccread(void *_buf, size_t size)
 		0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
 	};
 	size_t i;
-	u8 *eccbuf, *buf;
+	int j;
+	u8 eccbuf[8], *buf, c;
 
 	buf = _buf;
 
-	eccbuf = xmalloc(size * 8);
-	xread(eccbuf, size * 8);
-
 	for (i = 0; i < size; ++i) {
-		int j;
-		u8 c;
+		xread(eccbuf, 8);
 
 		c = 0;
 		for (j = 0; j < 8; ++j)
-			c |= ecc[eccbuf[i * 8 + j] & 0x7f] << j;
+			c |= ecc[eccbuf[j] & 0x7f] << j;
 
 		buf[i] = c;
 	}
-
-	free(eccbuf);
 }
 
 void uart_otp_read(void)
@@ -330,14 +325,26 @@ void uart_otp_read(void)
 
 void uart_deploy(void)
 {
-	u8 buf[142];
+	u8 buf[134];
+	int ram;
 
-	eccread(buf, 142);
-	if (memcmp(buf, "RAM", 3) || (buf[3] != '0' && buf[3] != '1') ||
-	    memcmp(buf + 4, "PUBK", 4))
-		die("Wrong reply: \"%.*s\"", 4, buf);
+	eccread(buf, 4);
+	if (memcmp(buf, "RAM", 3) || (buf[3] != '0' && buf[3] != '1'))
+		goto wrong;
+
+	ram = buf[3] == '1' ? 1024 : 512;
+
+	eccread(buf, 4);
+	if (memcmp(buf, "PUBK", 4))
+		goto wrong;
+
+	eccread(buf, 134);
 
 	printf("\n");
-	printf("Found %i MiB RAM\n", buf[3] == '1' ? 1024 : 512);
-	printf("ECDSA Public Key: %.*s\n", 134, buf + 8);
+	printf("Found %i MiB RAM\n", ram);
+	printf("ECDSA Public Key: %.*s\n", 134, buf);
+
+	return;
+wrong:
+	die("Wrong reply: \"%.*s\"", 4, buf);
 }

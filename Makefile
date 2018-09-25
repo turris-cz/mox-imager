@@ -16,6 +16,7 @@ mox-imager: $(OBJS)
 	$(CC) $(CFLAGS) -o mox-imager $(OBJS) $(LDFLAGS)
 
 mox-imager.c: wtmi.c
+	touch mox-imager.c
 
 wtmi.c: wtmi.bin bin2c
 	./bin2c wtmi_data <wtmi.bin >wtmi.c
