@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Beerware
 
+WTMI_PATH := ../wtmi
+
 CC := gcc
 CFLAGS := -O2
 LDFLAGS := -lm -lcrypto
@@ -26,3 +28,9 @@ bin2c: bin2c.o
 
 %.o: %.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+.PHONY: wtmi.bin
+
+wtmi.bin:
+	make -C $(WTMI_PATH) DEPLOY=1
+	cp -f $(WTMI_PATH)/wtmi.bin .

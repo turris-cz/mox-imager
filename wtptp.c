@@ -334,14 +334,37 @@ void uart_deploy(void)
 
 	ram = buf[3] == '1' ? 1024 : 512;
 
+	printf("\n");
+	printf("Found %i MiB RAM\n", ram);
+
+	eccread(buf, 4);
+	if (memcmp(buf, "SERN", 4))
+		goto wrong;
+
+	eccread(buf, 8);
+	printf("Serial Number: %.*s\n", 8, buf);
+
+	eccread(buf, 4);
+	if (memcmp(buf, "BVER", 4))
+		goto wrong;
+
+	eccread(buf, 2);
+	buf[2] = '\0';
+	printf("Board version: %lu\n", strtol(buf, NULL, 16));
+
+	eccread(buf, 4);
+	if (memcmp(buf, "MACA", 4))
+		goto wrong;
+
+	eccread(buf, 12);
+	printf("MAC address: %.*s\n", 12, buf);
+
 	eccread(buf, 4);
 	if (memcmp(buf, "PUBK", 4))
 		goto wrong;
 
 	eccread(buf, 134);
 
-	printf("\n");
-	printf("Found %i MiB RAM\n", ram);
 	printf("ECDSA Public Key: %.*s\n", 134, buf);
 
 	return;

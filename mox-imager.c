@@ -244,6 +244,8 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 	mbd->board_version = htole32(bv);
 
 	tim = image_find(TIMH_ID);
+	/* check if the TIM is correct by parsing it */
+	tim_parse(tim, NULL);
 	tim_get_otp_hash(tim, mbd->otp_hash);
 }
 

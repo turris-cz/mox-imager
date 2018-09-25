@@ -118,7 +118,6 @@ void tim_remove_image(image_t *tim, u32 id)
 	timhdr_t *timhdr;
 	imginfo_t *img;
 	void *imgend;
-	int i;
 
 	timhdr = (void *) tim->data;
 
@@ -126,7 +125,7 @@ void tim_remove_image(image_t *tim, u32 id)
 	if (!img)
 		return;
 
-	if (i > 0)
+	if (img != tim_image(timhdr, 0))
 		(img - 1)->nextid = img->nextid;
 
 	imgend = img + 1;
@@ -915,10 +914,10 @@ void tim_sign(image_t *tim, EC_KEY *key)
 
 	key_get_tim_coords(key, platds->ECDSA.pub.x, platds->ECDSA.pub.y);
 
-	image_hash(HASH_SHA512, tim->data, (u8 *) &platds->ECDSA.sig - tim->data,
+	image_hash(HASH_SHA256, tim->data, (u8 *) &platds->ECDSA.sig - tim->data,
 		   hash, -1);
 
-	sig = ECDSA_do_sign((void *) hash, sizeof(hash), key);
+	sig = ECDSA_do_sign((void *) hash, 32, key);
 	if (!sig)
 		die("Could not sign");
 
