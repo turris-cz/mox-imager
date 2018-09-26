@@ -233,7 +233,7 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 
 	mac = mac2u64(mac_address);
 
-	printf("Deploying device SN %08X, board version %u, MAC %s\n",
+	printf("Deploying device SN %016llX, board version %u, MAC %s\n",
 	       sn, bv, mac_address);
 
 	mbd->op = htole32(1);
