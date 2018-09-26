@@ -28,8 +28,8 @@
 
 struct mox_builder_data {
 	u32 op;
-	u32 serial_number;
-	u32 manufacturing_time;
+	u32 serial_number_low;
+	u32 serial_number_high;
 	u32 mac_addr_low;
 	u32 mac_addr_high;
 	u32 board_version;
@@ -219,11 +219,11 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 		      const char *mac_address, const char *board_version)
 {
 	image_t *tim;
-	u64 mac;
-	u32 sn, bv;
+	u64 mac, sn;
+	u32 bv;
 	char *end;
 
-	sn = strtoul(serial_number, &end, 16);
+	sn = strtoull(serial_number, &end, 16);
 	if (*end)
 		die("Invalid serial number \"%s\"", serial_number);
 
@@ -237,8 +237,8 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 	       sn, bv, mac_address);
 
 	mbd->op = htole32(1);
-	mbd->serial_number = htole32(sn);
-	mbd->manufacturing_time = htole32(time(NULL));
+	mbd->serial_number_low = htole32(sn & 0xffffffff);
+	mbd->serial_number_high = htole32(sn >> 32);
 	mbd->mac_addr_low = htole32(mac & 0xffffffff);
 	mbd->mac_addr_high = htole32(mac >> 32);
 	mbd->board_version = htole32(bv);

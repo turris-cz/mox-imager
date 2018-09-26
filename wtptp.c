@@ -341,8 +341,8 @@ void uart_deploy(void)
 	if (memcmp(buf, "SERN", 4))
 		goto wrong;
 
-	eccread(buf, 8);
-	printf("Serial Number: %.*s\n", 8, buf);
+	eccread(buf, 16);
+	printf("Serial Number: %.*s\n", 16, buf);
 
 	eccread(buf, 4);
 	if (memcmp(buf, "BVER", 4))
