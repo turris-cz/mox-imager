@@ -115,7 +115,7 @@ static void save_flash_image(image_t *tim, const char *path)
 		die("Cannot unmap %s: %m", path);
 }
 
-static void do_create_secure_image(const char *keyfile, const char *output)
+static void do_create_trusted_image(const char *keyfile, const char *output)
 {
 	EC_KEY *key;
 	image_t *timh, *timn, *wtmi, *obmi;
@@ -166,7 +166,7 @@ static void do_create_secure_image(const char *keyfile, const char *output)
 	close(fd);
 }
 
-static void do_create_unsecure_image(const char *output)
+static void do_create_untrusted_image(const char *output)
 {
 	image_t *timh, *wtmi, *obmi;
 	void *buf;
@@ -294,21 +294,22 @@ static void help(void)
 {
 	fprintf(stdout,
 		"Usage: mox-imager [OPTION]... [IMAGE]...\n\n"
-		"  -D, --device=TTY           upload images via UART to TTY\n"
-		"  -o, --output=IMAGE         output SPI NOR flash image to IMAGE\n"
-		"  -k, --key=KEY              read ECDSA-521 private key from file KEY\n"
-		"  -r, --random-seed=FILE     read random seed from file\n"
-		"  -R, --otp-read             read OTP memory\n"
-		"  -d, --deploy               deploy device (write OTP memory)\n"
-		"      --serial-number=SN     serial number to write to OTP memory\n"
-		"      --mac-address=MAC      MAC address to write to OTP memory\n"
-		"      --board-version=BV     board version to write to OTP memory\n"
-		"  -g, --gen-key=KEY          generate ECDSA-521 private key to file KEY\n"
-		"  -s, --sign                 sign TIM image with ECDSA-521 private key\n"
-		"      --create-secure-image  create secure image\n"
-		"  -u, --hash-u-boot          save OBMI (U-Boot) image hash to TIM\n"
-		"  -n, --no-u-boot            remove OBMI (U-Boot) image from TIM\n"
-		"  -h, --help                 show this help and exit\n"
+		"  -D, --device=TTY              upload images via UART to TTY\n"
+		"  -o, --output=IMAGE            output SPI NOR flash image to IMAGE\n"
+		"  -k, --key=KEY                 read ECDSA-521 private key from file KEY\n"
+		"  -r, --random-seed=FILE        read random seed from file\n"
+		"  -R, --otp-read                read OTP memory\n"
+		"  -d, --deploy                  deploy device (write OTP memory)\n"
+		"      --serial-number=SN        serial number to write to OTP memory\n"
+		"      --mac-address=MAC         MAC address to write to OTP memory\n"
+		"      --board-version=BV        board version to write to OTP memory\n"
+		"  -g, --gen-key=KEY             generate ECDSA-521 private key to file KEY\n"
+		"  -s, --sign                    sign TIM image with ECDSA-521 private key\n"
+		"      --create-trusted-image    create secure image\n"
+		"      --create-untrusted-image  create secure image\n"
+		"  -u, --hash-u-boot             save OBMI (U-Boot) image hash to TIM\n"
+		"  -n, --no-u-boot               remove OBMI (U-Boot) image from TIM\n"
+		"  -h, --help                    show this help and exit\n"
 		"\n");
 	exit(EXIT_SUCCESS);
 }
@@ -325,8 +326,8 @@ static const struct option long_options[] = {
 	{ "board-version",		required_argument,	0,	'B' },
 	{ "gen-key",			required_argument,	0,	'g' },
 	{ "sign",			no_argument,		0,	's' },
-	{ "create-secure-image",	no_argument,		0,	'c' },
-	{ "create-unsecure-image",	no_argument,		0,	'C' },
+	{ "create-trusted-image",	no_argument,		0,	'c' },
+	{ "create-untrusted-image",	no_argument,		0,	'C' },
 	{ "hash-u-boot",		no_argument,		0,	'u' },
 	{ "no-u-boot",			no_argument,		0,	'n' },
 	{ "help",			no_argument,		0,	'h' },
@@ -337,15 +338,15 @@ int main(int argc, char **argv)
 {
 	const char *tty, *output, *keyfile, *seed, *genkey,
 		   *serial_number, *mac_address, *board_version;
-	int sign, hash_u_boot, no_u_boot, otp_read, deploy, create_secure_image,
-	    create_unsecure_image;
+	int sign, hash_u_boot, no_u_boot, otp_read, deploy,
+	    create_trusted_image, create_untrusted_image;
 	image_t *tim;
 	int nimages, images_given;
 
 	tty = output = keyfile = seed = genkey = serial_number =
               mac_address = board_version = NULL;
 	sign = hash_u_boot = no_u_boot = otp_read = deploy =
-	     create_secure_image = create_unsecure_image = 0;
+	     create_trusted_image = create_untrusted_image = 0;
 
 	while (1) {
 		int optidx;
@@ -407,10 +408,10 @@ int main(int argc, char **argv)
 			sign = 1;
 			break;
 		case 'c':
-			create_secure_image = 1;
+			create_trusted_image = 1;
 			break;
 		case 'C':
-			create_unsecure_image = 1;
+			create_untrusted_image = 1;
 			break;
 		case 'u':
 			hash_u_boot = 1;
@@ -428,11 +429,11 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (create_secure_image && (!keyfile || !output))
-		die("Options --key and --output must be given when creating secure image");
+	if (create_trusted_image && (!keyfile || !output))
+		die("Options --key and --output must be given when creating trusted image");
 
-	if (create_unsecure_image && !output)
-		die("Option --output must be given when creating unsecure image");
+	if (create_untrusted_image && !output)
+		die("Option --output must be given when creating untrusted image");
 
 	if (tty && output)
 		die("Options --device and --output cannot be used together");
@@ -464,11 +465,11 @@ int main(int argc, char **argv)
 	for (; optind < argc; ++optind)
 		image_load(argv[optind]);
 
-	if (create_secure_image) {
-		do_create_secure_image(keyfile, output);
+	if (create_trusted_image) {
+		do_create_trusted_image(keyfile, output);
 		exit(EXIT_SUCCESS);
-	} else if (create_unsecure_image) {
-		do_create_unsecure_image(output);
+	} else if (create_untrusted_image) {
+		do_create_untrusted_image(output);
 		exit(EXIT_SUCCESS);
 	}
 
