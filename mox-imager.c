@@ -166,6 +166,47 @@ static void do_create_secure_image(const char *keyfile, const char *output)
 	close(fd);
 }
 
+static void do_create_unsecure_image(const char *output)
+{
+	image_t *timh, *wtmi, *obmi;
+	void *buf;
+	ssize_t wr;
+	int fd;
+
+	wtmi = image_find(name2id("WTMI"));
+	obmi = image_new(NULL, 0, name2id("OBMI"));
+	obmi->size = (2 << 20) - 0x15000 - 0x10000;
+
+	buf = xmalloc(0x15000);
+	memset(buf, 0, 0x15000);
+
+	timh = image_new(NULL, 0, TIMH_ID);
+	tim_minimal_image(timh, 0);
+	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, 0x4000, 1);
+	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, 0x15000, 0);
+	tim_set_boot(timh, BOOTFS_SPINOR);
+	tim_rehash(timh);
+	tim_parse(timh, NULL);
+
+	memcpy(buf, timh->data, timh->size);
+	memcpy(buf + 0x4000, wtmi->data, wtmi->size);
+
+	fd = open(output, O_RDWR | O_CREAT, 0644);
+	if (fd < 0)
+		die("Cannot open %s for writing: %m", output);
+
+	if (ftruncate(fd, 0) < 0)
+		die("Cannot truncate %s to size 0: %m", output);
+
+	wr = write(fd, buf, 0x15000);
+	if (wr < 0)
+		die("Cannot write to %s: %m", output);
+	else if (wr < 0x15000)
+		die("Cannot write whole output %s", output);
+
+	close(fd);
+}
+
 static int xdigit2i(char c)
 {
 	if (c >= '0' && c <= '9')
@@ -273,36 +314,38 @@ static void help(void)
 }
 
 static const struct option long_options[] = {
-	{ "device",		required_argument,	0,	'D' },
-	{ "output",		required_argument,	0,	'o' },
-	{ "key",		required_argument,	0,	'k' },
-	{ "random-seed",	required_argument,	0,	'r' },
-	{ "otp-read",		no_argument,		0,	'R' },
-	{ "deploy",		no_argument,		0,	'd' },
-	{ "serial-number",	required_argument,	0,	'S' },
-	{ "mac-address",	required_argument,	0,	'M' },
-	{ "board-version",	required_argument,	0,	'B' },
-	{ "gen-key",		required_argument,	0,	'g' },
-	{ "sign",		no_argument,		0,	's' },
-	{ "create-secure-image",no_argument,		0,	'c' },
-	{ "hash-u-boot",	no_argument,		0,	'u' },
-	{ "no-u-boot",		no_argument,		0,	'n' },
-	{ "help",		no_argument,		0,	'h' },
-	{ 0,			0,			0,	0 },
+	{ "device",			required_argument,	0,	'D' },
+	{ "output",			required_argument,	0,	'o' },
+	{ "key",			required_argument,	0,	'k' },
+	{ "random-seed",		required_argument,	0,	'r' },
+	{ "otp-read",			no_argument,		0,	'R' },
+	{ "deploy",			no_argument,		0,	'd' },
+	{ "serial-number",		required_argument,	0,	'S' },
+	{ "mac-address",		required_argument,	0,	'M' },
+	{ "board-version",		required_argument,	0,	'B' },
+	{ "gen-key",			required_argument,	0,	'g' },
+	{ "sign",			no_argument,		0,	's' },
+	{ "create-secure-image",	no_argument,		0,	'c' },
+	{ "create-unsecure-image",	no_argument,		0,	'C' },
+	{ "hash-u-boot",		no_argument,		0,	'u' },
+	{ "no-u-boot",			no_argument,		0,	'n' },
+	{ "help",			no_argument,		0,	'h' },
+	{ 0,				0,			0,	0 },
 };
 
 int main(int argc, char **argv)
 {
 	const char *tty, *output, *keyfile, *seed, *genkey,
 		   *serial_number, *mac_address, *board_version;
-	int sign, hash_u_boot, no_u_boot, otp_read, deploy, create_secure_image;
+	int sign, hash_u_boot, no_u_boot, otp_read, deploy, create_secure_image,
+	    create_unsecure_image;
 	image_t *tim;
 	int nimages, images_given;
 
 	tty = output = keyfile = seed = genkey = serial_number =
               mac_address = board_version = NULL;
 	sign = hash_u_boot = no_u_boot = otp_read = deploy =
-	     create_secure_image = 0;
+	     create_secure_image = create_unsecure_image = 0;
 
 	while (1) {
 		int optidx;
@@ -366,6 +409,9 @@ int main(int argc, char **argv)
 		case 'c':
 			create_secure_image = 1;
 			break;
+		case 'C':
+			create_unsecure_image = 1;
+			break;
 		case 'u':
 			hash_u_boot = 1;
 			break;
@@ -384,6 +430,9 @@ int main(int argc, char **argv)
 
 	if (create_secure_image && (!keyfile || !output))
 		die("Options --key and --output must be given when creating secure image");
+
+	if (create_unsecure_image && !output)
+		die("Option --output must be given when creating unsecure image");
 
 	if (tty && output)
 		die("Options --device and --output cannot be used together");
@@ -417,6 +466,9 @@ int main(int argc, char **argv)
 
 	if (create_secure_image) {
 		do_create_secure_image(keyfile, output);
+		exit(EXIT_SUCCESS);
+	} else if (create_unsecure_image) {
+		do_create_unsecure_image(output);
 		exit(EXIT_SUCCESS);
 	}
 

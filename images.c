@@ -108,15 +108,17 @@ static void do_load(void *data, size_t data_size)
 {
 	if (!memcmp(data + 4, "HMIT", 4) || !memcmp(data + 4, "NMIT", 4)) {
 		timhdr_t *timhdr = data;
+		image_t *tim;
 		void *timdata;
 		size_t timsize;
-		int i, f;
+		int i, f, do_rehash = 0;
 
 		timsize = tim_size(timhdr);
-
 		timdata = xmalloc(timsize);
 		memcpy(timdata, timhdr, timsize);
-		image_new(timdata, timsize, TIMH_ID);
+
+		tim = image_new(timdata, timsize, TIMH_ID);
+		timhdr = timdata;
 
 		f = 0;
 		for (i = 0; i < tim_nimages(timhdr); ++i) {
@@ -129,12 +131,21 @@ static void do_load(void *data, size_t data_size)
 			entry = le32toh(img->flashentryaddr);
 			size = le32toh(img->size);
 
-			if (!entry || data_size < entry + size)
+			if (!entry)
 				continue;
+
+			if (data_size < entry + size) {
+				size = data_size - entry;
+				img->size = htole32(size);
+				do_rehash = 1;
+			}
 
 			image_new(data + entry, size, le32toh(img->id));
 			++f;
 		}
+
+		if (do_rehash)
+			tim_rehash(tim);
 
 		if (!f)
 			munmap(data, data_size);
@@ -149,7 +160,7 @@ void image_load(const char *path)
 	struct stat st;
 	void *data;
 
-	fd = open(path, O_RDONLY);
+	fd = open(path, O_RDWR);
 	if (fd < 0)
 		die("Cannot open %s: %m", path);
 
@@ -162,7 +173,7 @@ void image_load(const char *path)
 	if (st.st_size < 8)
 		die("%s is too small (%zu bytes)", path, st.st_size);
 
-	data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	data = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
 	if (data == MAP_FAILED)
 		die("Cannot mmap %s: %m", path);
 
