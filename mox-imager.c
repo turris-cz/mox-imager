@@ -26,6 +26,8 @@
 
 #include "wtmi.c"
 
+#define MOX_ENV_OFFSET	0x180000
+
 struct mox_builder_data {
 	u32 op;
 	u32 serial_number_low;
@@ -125,7 +127,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output)
 
 	wtmi = image_find(name2id("WTMI"));
 	obmi = image_new(NULL, 0, name2id("OBMI"));
-	obmi->size = (2 << 20) - 0x15000 - 0x10000;
+	obmi->size = MOX_ENV_OFFSET - 0x15000;
 
 	buf = xmalloc(0x15000);
 	memset(buf, 0, 0x15000);
@@ -175,7 +177,7 @@ static void do_create_untrusted_image(const char *output)
 
 	wtmi = image_find(name2id("WTMI"));
 	obmi = image_new(NULL, 0, name2id("OBMI"));
-	obmi->size = (2 << 20) - 0x15000 - 0x10000;
+	obmi->size = MOX_ENV_OFFSET - 0x15000;
 
 	buf = xmalloc(0x15000);
 	memset(buf, 0, 0x15000);
