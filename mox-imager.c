@@ -26,7 +26,8 @@
 
 #include "wtmi.c"
 
-#define MOX_ENV_OFFSET	0x180000
+#define MOX_U_BOOT_OFFSET	0x20000
+#define MOX_ENV_OFFSET		0x180000
 
 struct mox_builder_data {
 	u32 op;
@@ -127,10 +128,10 @@ static void do_create_trusted_image(const char *keyfile, const char *output)
 
 	wtmi = image_find(name2id("WTMI"));
 	obmi = image_new(NULL, 0, name2id("OBMI"));
-	obmi->size = MOX_ENV_OFFSET - 0x15000;
+	obmi->size = MOX_ENV_OFFSET - MOX_U_BOOT_OFFSET;
 
-	buf = xmalloc(0x15000);
-	memset(buf, 0, 0x15000);
+	buf = xmalloc(MOX_U_BOOT_OFFSET);
+	memset(buf, 0, MOX_U_BOOT_OFFSET);
 
 	key = load_key(keyfile);
 
@@ -145,7 +146,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output)
 	timn = image_new(NULL, 0, TIMN_ID);
 	tim_minimal_image(timn, 2);
 	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, 0x4000, 1);
-	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, 0x15000, 0);
+	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET, 0);
 	tim_sign(timn, key);
 	tim_parse(timn, NULL);
 
@@ -159,10 +160,10 @@ static void do_create_trusted_image(const char *keyfile, const char *output)
 	if (ftruncate(fd, 0) < 0)
 		die("Cannot truncate %s to size 0: %m", output);
 
-	wr = write(fd, buf, 0x15000);
+	wr = write(fd, buf, MOX_U_BOOT_OFFSET);
 	if (wr < 0)
 		die("Cannot write to %s: %m", output);
-	else if (wr < 0x15000)
+	else if (wr < MOX_U_BOOT_OFFSET)
 		die("Cannot write whole output %s", output);
 
 	close(fd);
@@ -177,15 +178,15 @@ static void do_create_untrusted_image(const char *output)
 
 	wtmi = image_find(name2id("WTMI"));
 	obmi = image_new(NULL, 0, name2id("OBMI"));
-	obmi->size = MOX_ENV_OFFSET - 0x15000;
+	obmi->size = MOX_ENV_OFFSET - MOX_U_BOOT_OFFSET;
 
-	buf = xmalloc(0x15000);
-	memset(buf, 0, 0x15000);
+	buf = xmalloc(MOX_U_BOOT_OFFSET);
+	memset(buf, 0, MOX_U_BOOT_OFFSET);
 
 	timh = image_new(NULL, 0, TIMH_ID);
 	tim_minimal_image(timh, 0);
 	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, 0x4000, 1);
-	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, 0x15000, 0);
+	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET, 0);
 	tim_set_boot(timh, BOOTFS_SPINOR);
 	tim_rehash(timh);
 	tim_parse(timh, NULL);
@@ -200,10 +201,10 @@ static void do_create_untrusted_image(const char *output)
 	if (ftruncate(fd, 0) < 0)
 		die("Cannot truncate %s to size 0: %m", output);
 
-	wr = write(fd, buf, 0x15000);
+	wr = write(fd, buf, MOX_U_BOOT_OFFSET);
 	if (wr < 0)
 		die("Cannot write to %s: %m", output);
-	else if (wr < 0x15000)
+	else if (wr < MOX_U_BOOT_OFFSET)
 		die("Cannot write whole output %s", output);
 
 	close(fd);
