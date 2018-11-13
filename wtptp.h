@@ -19,6 +19,7 @@ typedef struct {
 	u8 data[255];
 } resp_t;
 
+extern void setwtp(const char *fdstr);
 extern void openwtp(const char *path);
 extern void closewtp(void);
 extern u32 selectimage(void);

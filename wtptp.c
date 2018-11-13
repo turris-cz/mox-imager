@@ -53,9 +53,29 @@ static void xwrite(const void *buf, size_t size)
 		die("Cannot write %zu bytes: written only %zi", size, res);
 }
 
-void openwtp(const char *path)
+static void initwtp(void)
 {
 	u8 buf[5];
+
+	xwrite("wtp\r", 4);
+	xread(buf, 5);
+	if (memcmp(buf, "wtp\r\n", 5))
+		die("Wrong reply: \"%.*s\"", 5, buf);
+}
+
+void setwtp(const char *fdstr)
+{
+	char *end;
+
+	wtpfd = strtol(fdstr, &end, 10);
+	if (*end || wtpfd < 0)
+		die("Wrong file descriptor %s", fdstr);
+
+	initwtp();
+}
+
+void openwtp(const char *path)
+{
 	struct termios opts;
 
 	wtpfd = open(path, O_RDWR | O_NOCTTY);
@@ -76,10 +96,7 @@ void openwtp(const char *path)
 	opts.c_cflag |= CS8;
 	tcsetattr(wtpfd, TCSANOW, &opts);
 
-	xwrite("wtp\r", 4);
-	xread(buf, 5);
-	if (memcmp(buf, "wtp\r\n", 5))
-		die("Wrong reply: \"%.*s\"", 5, buf);
+	initwtp();
 }
 
 void closewtp(void)
@@ -216,6 +233,7 @@ void sendimage(image_t *img, int fast)
 	u32 sent;
 	double start;
 	int diff;
+	int istty = isatty(STDOUT_FILENO);
 
 	buf[0] = 0;
 	sendcmd(0x27, 0, 0, 0, 1, buf, &resp);
@@ -251,14 +269,31 @@ void sendimage(image_t *img, int fast)
 
 		sent += tosend;
 
-		eta = lrint((now() - start) * (img->size - sent) / sent);
-		printf("\r%u%% sent, ETA %02i:%02i", 100 * sent / img->size,
-		       eta / 60, eta % 60);
-		fflush(stdout);
+		if (istty) {
+			eta = lrint((now() - start) * (img->size - sent) /
+				    sent);
+			printf("\r%u%% sent, ETA %02i:%02i",
+			       100 * sent / img->size, eta / 60, eta % 60);
+			fflush(stdout);
+		} else {
+			int pprev, p;
+
+			pprev = 100 * (sent - tosend) / img->size;
+			p = 100 * sent / img->size;
+
+			if (p != pprev) {
+				printf(".");
+				fflush(stdout);
+			}
+		}
 	}
 
-	diff = lrint(now() - start);
-	printf("\r100%% sent in %02i:%02i  \n", diff / 60, diff % 60);
+	if (istty) {
+		diff = lrint(now() - start);
+		printf("\r100%% sent in %02i:%02i  \n", diff / 60, diff % 60);
+	} else {
+		printf("\n");
+	}
 
 	if (fast) {
 		readresp(0x22, seq, 0, &resp);
@@ -321,6 +356,8 @@ void uart_otp_read(void)
 		printf("OTP row %i %016llx %s\n", i, val,
 		       buf[0] == '1' ? "locked" : "not locked");
 	}
+
+	printf("All done.\n");
 }
 
 void uart_deploy(void)
@@ -367,7 +404,13 @@ void uart_deploy(void)
 
 	printf("ECDSA Public Key: %.*s\n", 134, buf);
 
+	printf("All done.\n");
+
 	return;
 wrong:
-	die("Wrong reply: \"%.*s\"", 4, buf);
+	if (memcmp(buf, "FAIL", 4))
+		die("Wrong reply: \"%.*s\"", 4, buf);
+
+	eccread(buf, 14);
+	printf("FAIL%.*s\n", 14, buf);
 }

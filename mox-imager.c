@@ -298,6 +298,7 @@ static void help(void)
 	fprintf(stdout,
 		"Usage: mox-imager [OPTION]... [IMAGE]...\n\n"
 		"  -D, --device=TTY              upload images via UART to TTY\n"
+		"  -F, --fd=FD                   TTY file descriptor\n"
 		"  -o, --output=IMAGE            output SPI NOR flash image to IMAGE\n"
 		"  -k, --key=KEY                 read ECDSA-521 private key from file KEY\n"
 		"  -r, --random-seed=FILE        read random seed from file\n"
@@ -319,6 +320,7 @@ static void help(void)
 
 static const struct option long_options[] = {
 	{ "device",			required_argument,	0,	'D' },
+	{ "fd",				required_argument,	0,	'F' },
 	{ "output",			required_argument,	0,	'o' },
 	{ "key",			required_argument,	0,	'k' },
 	{ "random-seed",		required_argument,	0,	'r' },
@@ -339,14 +341,14 @@ static const struct option long_options[] = {
 
 int main(int argc, char **argv)
 {
-	const char *tty, *output, *keyfile, *seed, *genkey,
+	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey,
 		   *serial_number, *mac_address, *board_version;
 	int sign, hash_u_boot, no_u_boot, otp_read, deploy,
 	    create_trusted_image, create_untrusted_image;
 	image_t *tim;
 	int nimages, images_given;
 
-	tty = output = keyfile = seed = genkey = serial_number =
+	tty = fdstr = output = keyfile = seed = genkey = serial_number =
               mac_address = board_version = NULL;
 	sign = hash_u_boot = no_u_boot = otp_read = deploy =
 	     create_trusted_image = create_untrusted_image = 0;
@@ -355,7 +357,7 @@ int main(int argc, char **argv)
 		int optidx;
 		char c;
 
-		c = getopt_long(argc, argv, "D:o:k:r:Rdg:sunh", long_options,
+		c = getopt_long(argc, argv, "D:F:o:k:r:Rdg:sunh", long_options,
 				NULL);
 		if (c == -1)
 			break;
@@ -365,6 +367,11 @@ int main(int argc, char **argv)
 			if (tty)
 				die("Device already given");
 			tty = optarg;
+			break;
+		case 'F':
+			if (fdstr)
+				die("File descriptor already given");
+			fdstr = optarg;
 			break;
 		case 'o':
 			if (output)
@@ -438,13 +445,13 @@ int main(int argc, char **argv)
 	if (create_untrusted_image && !output)
 		die("Option --output must be given when creating untrusted image");
 
-	if (tty && output)
+	if ((tty || fdstr) && output)
 		die("Options --device and --output cannot be used together");
 
 	if (sign && !keyfile)
 		die("Option --key must be given when signing");
 
-	if ((otp_read || deploy) && !tty)
+	if ((otp_read || deploy) && !tty && !fdstr)
 		die("Option --device must be specified when reading/writing OTP");
 
 	if (otp_read && deploy)
@@ -511,7 +518,7 @@ int main(int argc, char **argv)
 		tim_enable_hash(tim, OBMI_ID, hash_u_boot);
 	}
 
-	if (tty)
+	if (tty || fdstr)
 		tim_set_boot(tim, BOOTFS_UART);
 	else if (output)
 		tim_set_boot(tim, BOOTFS_SPINOR);
@@ -523,10 +530,13 @@ int main(int argc, char **argv)
 		tim_rehash(tim);
 	}
 
-	if (tty) {
+	if (tty || fdstr) {
 		int i;
 
-		openwtp(tty);
+		if (fdstr)
+			setwtp(fdstr);
+		else
+			openwtp(tty);
 
 		for (i = 0; i < nimages; ++i) {
 			u32 imgtype;
