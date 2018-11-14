@@ -259,8 +259,19 @@ struct mox_builder_data *find_mbd(void) {
 	return r;
 }
 
+static void do_get_otp_hash(u32 *hash)
+{
+	image_t *tim;
+
+	tim = image_find(TIMH_ID);
+	/* check if the TIM is correct by parsing it */
+	tim_parse(tim, NULL);
+	tim_get_otp_hash(tim, hash);
+}
+
 static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
-		      const char *mac_address, const char *board_version)
+		      const char *mac_address, const char *board_version,
+		      const char *otp_hash)
 {
 	image_t *tim;
 	u64 mac, sn;
@@ -287,10 +298,26 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 	mbd->mac_addr_high = htole32(mac >> 32);
 	mbd->board_version = htole32(bv);
 
-	tim = image_find(TIMH_ID);
-	/* check if the TIM is correct by parsing it */
-	tim_parse(tim, NULL);
-	tim_get_otp_hash(tim, mbd->otp_hash);
+	if (otp_hash) {
+		/* if OTP hash is given as arg, parse it */
+
+		int i;
+		char buf[9], *end;
+
+		if (strlen(otp_hash) != 64)
+			die("Invalid OTP hash (wrong length)");
+
+		buf[8] = '\0';
+		for (i = 0; i < 8; ++i) {
+			memcpy(buf, &otp_hash[8 * i], 8);
+			mbd->otp_hash[i] = strtoull(buf, &end, 16);
+			if (*end)
+				die("Invalid OTP hash (bad character)");
+		}
+	} else {
+		/* else generate from given secure firmware */
+		do_get_otp_hash(mbd->otp_hash);
+	}
 }
 
 static void help(void)
@@ -307,10 +334,12 @@ static void help(void)
 		"      --serial-number=SN        serial number to write to OTP memory\n"
 		"      --mac-address=MAC         MAC address to write to OTP memory\n"
 		"      --board-version=BV        board version to write to OTP memory\n"
+		"      --otp-hash=HASH           secure firmware hash as given by --get-otp-hash\n"
 		"  -g, --gen-key=KEY             generate ECDSA-521 private key to file KEY\n"
 		"  -s, --sign                    sign TIM image with ECDSA-521 private key\n"
 		"      --create-trusted-image    create secure image\n"
 		"      --create-untrusted-image  create secure image\n"
+		"      --get-otp-hash            print OTP hash of given secure firmware image\n"
 		"  -u, --hash-u-boot             save OBMI (U-Boot) image hash to TIM\n"
 		"  -n, --no-u-boot               remove OBMI (U-Boot) image from TIM\n"
 		"  -h, --help                    show this help and exit\n"
@@ -329,10 +358,12 @@ static const struct option long_options[] = {
 	{ "serial-number",		required_argument,	0,	'S' },
 	{ "mac-address",		required_argument,	0,	'M' },
 	{ "board-version",		required_argument,	0,	'B' },
+	{ "otp-hash",			required_argument,	0,	'H' },
 	{ "gen-key",			required_argument,	0,	'g' },
 	{ "sign",			no_argument,		0,	's' },
 	{ "create-trusted-image",	no_argument,		0,	'c' },
 	{ "create-untrusted-image",	no_argument,		0,	'C' },
+	{ "get-otp-hash",		no_argument,		0,	'G' },
 	{ "hash-u-boot",		no_argument,		0,	'u' },
 	{ "no-u-boot",			no_argument,		0,	'n' },
 	{ "help",			no_argument,		0,	'h' },
@@ -342,15 +373,15 @@ static const struct option long_options[] = {
 int main(int argc, char **argv)
 {
 	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey,
-		   *serial_number, *mac_address, *board_version;
-	int sign, hash_u_boot, no_u_boot, otp_read, deploy,
+		   *serial_number, *mac_address, *board_version, *otp_hash;
+	int sign, hash_u_boot, no_u_boot, otp_read, deploy, get_otp_hash,
 	    create_trusted_image, create_untrusted_image;
 	image_t *tim;
 	int nimages, images_given;
 
 	tty = fdstr = output = keyfile = seed = genkey = serial_number =
-              mac_address = board_version = NULL;
-	sign = hash_u_boot = no_u_boot = otp_read = deploy =
+              mac_address = board_version = otp_hash = NULL;
+	sign = hash_u_boot = no_u_boot = otp_read = deploy = get_otp_hash =
 	     create_trusted_image = create_untrusted_image = 0;
 
 	while (1) {
@@ -409,6 +440,11 @@ int main(int argc, char **argv)
 				die("Board version already given");
 			board_version = optarg;
 			break;
+		case 'H':
+			if (otp_hash)
+				die("OTP hash already given");
+			otp_hash = optarg;
+			break;
 		case 'g':
 			if (genkey)
 				die("File to which generate key already given");
@@ -422,6 +458,9 @@ int main(int argc, char **argv)
 			break;
 		case 'C':
 			create_untrusted_image = 1;
+			break;
+		case 'G':
+			get_otp_hash = 1;
 			break;
 		case 'u':
 			hash_u_boot = 1;
@@ -493,7 +532,7 @@ int main(int argc, char **argv)
 		mbd = find_mbd();
 
 		if (deploy)
-			do_deploy(mbd, serial_number, mac_address, board_version);
+			do_deploy(mbd, serial_number, mac_address, board_version, otp_hash);
 		else
 			mbd->op = 0;
 
@@ -508,6 +547,18 @@ int main(int argc, char **argv)
 	} else {
 		if (!images_given)
 			die("No images given, try -h for help");
+
+		if (get_otp_hash) {
+			u32 hash[8];
+			int i;
+
+			do_get_otp_hash(hash);
+			printf("Secure firmware OTP hash: ");
+			for (i = 0; i < 8; ++i)
+				printf("%08x", hash[i]);
+			printf("\n");
+			exit(EXIT_SUCCESS);
+		}
 
 		tim = image_find(TIMH_ID);
 		if (no_u_boot) {
