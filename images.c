@@ -160,7 +160,7 @@ void image_load(const char *path)
 	struct stat st;
 	void *data;
 
-	fd = open(path, O_RDWR);
+	fd = open(path, O_RDONLY);
 	if (fd < 0)
 		die("Cannot open %s: %m", path);
 
