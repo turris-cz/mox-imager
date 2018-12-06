@@ -411,6 +411,6 @@ wrong:
 	if (memcmp(buf, "FAIL", 4))
 		die("Wrong reply: \"%.*s\"", 4, buf);
 
-	eccread(buf, 14);
-	printf("FAIL%.*s\n", 14, buf);
+	eccread(buf, 13);
+	printf("FAIL%.*s\n", 13, buf);
 }
