@@ -78,7 +78,7 @@ void openwtp(const char *path)
 {
 	struct termios opts;
 
-	wtpfd = open(path, O_RDWR | O_NOCTTY);
+	wtpfd = open(path, O_RDWR | O_NOCTTY | O_SYNC);
 
 	if (wtpfd < 0)
 		die("Cannot open %s: %m", path);
@@ -87,14 +87,16 @@ void openwtp(const char *path)
 	tcgetattr(wtpfd, &opts);
 	cfsetispeed(&opts, B115200);
 	cfsetospeed(&opts, B115200);
-	opts.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL|IXON);
-	opts.c_lflag &= ~(ICANON|ECHO|ECHOE|ISIG|ECHONL|IEXTEN);
-	opts.c_oflag &= ~OPOST;
 	opts.c_cc[VMIN] = 0;
 	opts.c_cc[VTIME] = 0;
-	opts.c_cflag &= ~(CSIZE|PARENB);
-	opts.c_cflag |= CS8;
+	opts.c_iflag = 0;
+	opts.c_lflag = 0;
+	opts.c_oflag = 0;
+	opts.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
+	opts.c_cflag |= CS8 | CREAD | CLOCAL;
 	tcsetattr(wtpfd, TCSANOW, &opts);
+
+	tcflush(wtpfd, TCIOFLUSH);
 
 	initwtp();
 }
