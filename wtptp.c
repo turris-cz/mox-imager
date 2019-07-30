@@ -53,6 +53,63 @@ static void xwrite(const void *buf, size_t size)
 		die("Cannot write %zu bytes: written only %zi", size, res);
 }
 
+static int detect_char(u8 *c)
+{
+	ssize_t rd;
+	u8 rcv;
+
+	rd = read(wtpfd, &rcv, 1);
+	if (rd < 0)
+		die("Cannot detect char while sending escape sequence: %m");
+	if (rd == 1 && c)
+		*c = rcv;
+
+	return rd == 1;
+}
+
+static void raw_escape_seq(void)
+{
+	int i, nacks;
+	const u8 buf[8] = {0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+	u8 rcv;
+
+	for (i = 0, nacks; i < 10000 && nacks < 4; ++i) {
+		xwrite(buf, 8);
+		if (!detect_char(&rcv))
+			continue;
+		if (rcv == 0x3e)
+			break;
+		else if (rcv == 0x00)
+			++nacks;
+	}
+
+	if (i == 10000)
+		die("Escape sequence failed!");
+}
+
+static void escape_seq(void)
+{
+	size_t tot = 0;
+	ssize_t rd;
+	u8 buf[512];
+
+	printf("Sending escape sequence, you have cca 5-10 seconds to power up MOX\n\n");
+
+	raw_escape_seq();
+	raw_escape_seq();
+	xwrite("\r\r\r\r", 4);
+
+	while (1) {
+		usleep(500000);
+		rd = read(wtpfd, buf, 512);
+		if (rd < 0)
+			die("Cannot read: %m\n");
+		if (!rd)
+			break;
+		tot += rd;
+	}
+}
+
 static void initwtp(void)
 {
 	u8 buf[5];
@@ -63,22 +120,11 @@ static void initwtp(void)
 		die("Wrong reply: \"%.*s\"", 5, buf);
 }
 
-void setwtp(const char *fdstr)
-{
-	char *end;
-
-	wtpfd = strtol(fdstr, &end, 10);
-	if (*end || wtpfd < 0)
-		die("Wrong file descriptor %s", fdstr);
-
-	initwtp();
-}
-
-void openwtp(const char *path)
+static void do_open(const char *path)
 {
 	struct termios opts;
 
-	wtpfd = open(path, O_RDWR | O_NOCTTY | O_SYNC);
+	wtpfd = open(path, O_RDWR | O_NOCTTY);
 
 	if (wtpfd < 0)
 		die("Cannot open %s: %m", path);
@@ -95,10 +141,30 @@ void openwtp(const char *path)
 	opts.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
 	opts.c_cflag |= CS8 | CREAD | CLOCAL;
 	tcsetattr(wtpfd, TCSANOW, &opts);
+}
 
-	tcflush(wtpfd, TCIOFLUSH);
+void setwtp(const char *fdstr, int send_escape)
+{
+	char *end;
 
-	initwtp();
+	wtpfd = strtol(fdstr, &end, 10);
+	if (*end || wtpfd < 0)
+		die("Wrong file descriptor %s", fdstr);
+
+	if (send_escape)
+		escape_seq();
+	else
+		initwtp();
+}
+
+void openwtp(const char *path, int send_escape)
+{
+	do_open(path);
+
+	if (send_escape)
+		escape_seq();
+	else
+		initwtp();
 }
 
 void closewtp(void)

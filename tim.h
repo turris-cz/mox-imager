@@ -89,13 +89,25 @@ typedef struct {
 	u32 pkgs;
 } reshdr_t;
 
+#define PKG_IMAP	name2id("IMAP")
 #define PKG_PINP	name2id("PINP")
 #define PKG_Term	name2id("Term")
 
 typedef struct {
 	u32 id;
 	u32 size;
-	u32 data[];
+	union {
+		u32 data[0];
+		struct {
+			u32 nmaps;
+			struct {
+				u32 id;
+				u32 type;
+				u32 flashentryaddr[2];
+				u32 partitionnumber;
+			} maps[0];
+		} imap;
+	};
 } respkg_t;
 
 #define DSALG_PKCS1_V1_5	3
@@ -249,6 +261,14 @@ static inline size_t tim_size(timhdr_t *timhdr)
 	return res;
 }
 
+static inline int tim_is_trusted(const image_t *tim)
+{
+	const timhdr_t *timhdr = (void *)tim->data;
+	return !!timhdr->trusted;
+}
+
+extern void tim_image_set_loadaddr(image_t *tim, u32 id, u32 loadaddr);
+extern u32 tim_imap_pkg_addr(image_t *tim, u32 id);
 extern void tim_parse(image_t *tim, int *numimagesp);
 extern void tim_enable_hash(image_t *tim, u32 id, int enable);
 extern void tim_rehash(image_t *tim);

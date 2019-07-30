@@ -113,6 +113,17 @@ static imginfo_t *tim_find_image(image_t *tim, u32 id)
 	return NULL;
 }
 
+void tim_image_set_loadaddr(image_t *tim, u32 id, u32 loadaddr)
+{
+	imginfo_t *img;
+
+	img = tim_find_image(tim, id);
+	if (!img)
+		return;
+
+	img->loadaddr = htole32(loadaddr);
+}
+
 void tim_remove_image(image_t *tim, u32 id)
 {
 	timhdr_t *timhdr;
@@ -141,7 +152,7 @@ void tim_remove_image(image_t *tim, u32 id)
 	}
 }
 
-static void tim_remove_pkg(image_t *tim, u32 id)
+static respkg_t *tim_find_pkg(image_t *tim, u32 id)
 {
 	timhdr_t *timhdr;
 	reshdr_t *reshdr;
@@ -156,6 +167,35 @@ static void tim_remove_pkg(image_t *tim, u32 id)
 		if (le32toh(pkg->id) == id)
 			break;
 
+	return pkg;
+}
+
+u32 tim_imap_pkg_addr(image_t *tim, u32 id)
+{
+	respkg_t *pkg;
+	int i;
+
+	pkg = tim_find_pkg(tim, PKG_IMAP);
+	if (!pkg)
+		return -1;
+
+	for (i = 0; i < le32toh(pkg->imap.nmaps); ++i)
+		if (le32toh(pkg->imap.maps[i].id) == id)
+			return le32toh(pkg->imap.maps[i].flashentryaddr[0]);
+
+	return -1;
+}
+
+static void tim_remove_pkg(image_t *tim, u32 id)
+{
+	timhdr_t *timhdr;
+	reshdr_t *reshdr;
+	respkg_t *pkg;
+	u32 pkgsize;
+	void *pkgend;
+
+	pkg = tim_find_pkg(tim, id);
+
 	if (!pkg)
 		return;
 
@@ -163,6 +203,7 @@ static void tim_remove_pkg(image_t *tim, u32 id)
 	pkgend = (void *) pkg + pkgsize;
 	memmove(pkg, pkgend, (void *) tim->data + tim->size - pkgend);
 
+	timhdr = (void *) tim->data;
 	reshdr = reserved_area(timhdr);
 	reshdr->pkgs = htole32(le32toh(reshdr->pkgs) - 1);
 	timhdr->sizeofreserved = htole32(le32toh(timhdr->sizeofreserved) - pkgsize);
@@ -553,10 +594,25 @@ void tim_parse(image_t *tim, int *numimagesp)
 	       timhdr->trusted ? "trusted" : "non-trusted", numimages, numkeys,
 	       bootfs2name(bootfs));
 
-	printf("Reserved area packages:");
-	for (pkg = firstpkg(timhdr); pkg; pkg = nextpkg(timhdr, pkg))
-		printf(" %s", id2name(pkg->id));
-	printf("\n");
+	printf("Reserved area packages:\n");
+	for (pkg = firstpkg(timhdr); pkg; pkg = nextpkg(timhdr, pkg)) {
+		printf("  %s\n", id2name(pkg->id));
+		if (le32toh(pkg->id) == PKG_IMAP) {
+			int i;
+
+			for (i = 0; i < le32toh(pkg->imap.nmaps); ++i) {
+				typeof(pkg->imap.maps[0]) *map;
+				map = &pkg->imap.maps[i];
+
+				printf("    Image map %i: %s, %s, entry "
+				       "address %08x, partition number %u\n", i,
+				       id2name(map->id),
+				       map->type ? "recovery" : "primary",
+				       le32toh(map->flashentryaddr[0]),
+				       le32toh(map->partitionnumber));
+			}
+		}
+	}
 
 	if (!timhdr->trusted && numkeys)
 		die("Keys present in non-trusted TIM");
@@ -590,7 +646,7 @@ void tim_parse(image_t *tim, int *numimagesp)
 			die("Next image ID check failed");
 
 		img = image_find(id);
-		if (img->size != size)
+		if (img->size != size && i->sizetohash)
 			die("Wrong length of %s image (%u, expected %u)",
 			    id2name(id), img->size, size);
 
@@ -617,6 +673,8 @@ void tim_parse(image_t *tim, int *numimagesp)
 		if (memcmp(hash, i->hash, sizeof(hash)))
 			die("Hash check failed for %s", id2name(id));
 	}
+
+	printf("\n");
 
 	if (numimagesp)
 		*numimagesp = numimages;

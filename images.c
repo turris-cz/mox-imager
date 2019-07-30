@@ -104,20 +104,23 @@ void image_delete_all(void)
 	}
 }
 
-static void do_load(void *data, size_t data_size)
+static int do_load(void *data, size_t data_size, u32 hdr_addr)
 {
-	if (!memcmp(data + 4, "HMIT", 4) || !memcmp(data + 4, "NMIT", 4)) {
-		timhdr_t *timhdr = data;
+	if (!memcmp(data + hdr_addr + 4, "HMIT", 4) ||
+	    !memcmp(data + hdr_addr + 4, "NMIT", 4)) {
+		timhdr_t *timhdr;
 		image_t *tim;
 		void *timdata;
 		size_t timsize;
+		u32 cskt_addr;
 		int i, f, do_rehash = 0;
 
+		timhdr = data + hdr_addr;
 		timsize = tim_size(timhdr);
 		timdata = xmalloc(timsize);
 		memcpy(timdata, timhdr, timsize);
 
-		tim = image_new(timdata, timsize, TIMH_ID);
+		tim = image_new(timdata, timsize, le32toh(timhdr->identifier));
 		timhdr = timdata;
 
 		f = 0;
@@ -131,26 +134,33 @@ static void do_load(void *data, size_t data_size)
 			entry = le32toh(img->flashentryaddr);
 			size = le32toh(img->size);
 
-			if (!entry)
+			if (img->id == timhdr->identifier)
 				continue;
 
 			if (data_size < entry + size) {
 				size = data_size - entry;
-				img->size = htole32(size);
-				do_rehash = 1;
+				if (img->sizetohash) {
+					img->size = htole32(size);
+					do_rehash = 1;
+				}
 			}
 
 			image_new(data + entry, size, le32toh(img->id));
 			++f;
 		}
 
+		cskt_addr = tim_imap_pkg_addr(tim, name2id("CSKT"));
+		if (cskt_addr != -1 && cskt_addr < data_size)
+			f += do_load(data, data_size, cskt_addr);
+
 		if (do_rehash)
 			tim_rehash(tim);
 
-		if (!f)
+		if (!f && !hdr_addr)
 			munmap(data, data_size);
 	} else {
 		image_new(data + 4, data_size - 4, le32toh(*(u32 *) data));
+		return 1;
 	}
 }
 
@@ -179,5 +189,5 @@ void image_load(const char *path)
 
 	close(fd);
 
-	do_load(data, st.st_size);
+	do_load(data, st.st_size, 0);
 }
