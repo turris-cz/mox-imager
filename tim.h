@@ -89,6 +89,7 @@ typedef struct {
 	u32 pkgs;
 } reshdr_t;
 
+#define PKG_CIDP	name2id("CIDP")
 #define PKG_IMAP	name2id("IMAP")
 #define PKG_PINP	name2id("PINP")
 #define PKG_Term	name2id("Term")
@@ -107,6 +108,23 @@ typedef struct {
 				u32 partitionnumber;
 			} maps[0];
 		} imap;
+		struct {
+			u32 nconsumers;
+			struct cidp_t {
+				u32 id;
+				u32 npkgs;
+				u32 pkgs[0];
+			} consumers[0];
+		} cidp;
+		struct {
+			u32 nops;
+			u32 ninst;
+			struct gpp_op {
+				u32 id;
+				u32 value;
+			} ops[0];
+			u32 instructions[0];
+		} gpp;
 	};
 } respkg_t;
 

@@ -13,6 +13,7 @@
 #include "key.h"
 #include "bn.h"
 #include "images.h"
+#include "instr.h"
 
 static reshdr_t *reserved_area(timhdr_t *timhdr)
 {
@@ -596,8 +597,10 @@ void tim_parse(image_t *tim, int *numimagesp)
 
 	printf("Reserved area packages:\n");
 	for (pkg = firstpkg(timhdr); pkg; pkg = nextpkg(timhdr, pkg)) {
-		printf("  %s\n", id2name(pkg->id));
-		if (le32toh(pkg->id) == PKG_IMAP) {
+		u32 pkgid = le32toh(pkg->id);
+
+		printf("  %s (size %u)\n", id2name(pkgid), le32toh(pkg->size));
+		if (pkgid == PKG_IMAP) {
 			int i;
 
 			for (i = 0; i < le32toh(pkg->imap.nmaps); ++i) {
@@ -611,6 +614,62 @@ void tim_parse(image_t *tim, int *numimagesp)
 				       le32toh(map->flashentryaddr[0]),
 				       le32toh(map->partitionnumber));
 			}
+		} else if (pkgid == PKG_CIDP) {
+			struct cidp_t *cidp = &pkg->cidp.consumers[0];
+			int i, j, n;
+
+			for (i = 0; i < le32toh(pkg->cidp.nconsumers); ++i) {
+				printf("    Consumer %s, packages:",
+					id2name(le32toh(cidp->id)));
+
+				n = le32toh(cidp->npkgs);
+				for (j = 0; j < n; ++j)
+					printf(" %s",
+					       id2name(le32toh(cidp->pkgs[j])));
+				printf("\n");
+
+				cidp = (void *)cidp + sizeof(*cidp) +
+				       n * sizeof(cidp->pkgs[0]);
+			}
+		} else if ((pkgid & 0xffffff00) == 0x47505000 || 
+			   (pkgid & 0xffffff00) == 0x44445200) {
+			struct gpp_op *op = &pkg->gpp.ops[0];
+			u32 nops, ninst;
+			int i;
+
+			nops = le32toh(pkg->gpp.nops);
+			ninst = le32toh(pkg->gpp.ninst);
+
+			for (i = 0; i < nops; ++i) {
+				u32 opid, opval;
+
+				opid = le32toh(op->id);
+				opval = le32toh(op->value);
+				switch (opid) {
+				case 0x01:
+					printf("    Initialize DDR memory: %u\n", opval);
+					break;
+				case 0x02:
+					printf("    Enable memtest: %u\n", opval);
+					break;
+				case 0x03:
+					printf("    Memtest start: 0x%x\n", opval);
+					break;
+				case 0x04:
+					printf("    Memtest size: 0x%x\n", opval);
+					break;
+				case 0x05:
+					printf("    Init attempts: %u\n", opval);
+					break;
+				case 0x06:
+					printf("    Ignore timeouts in instructions: %u\n", opval);
+					break;
+				}
+				++op;
+			}
+
+			printf("    Instructions:\n");
+			disassemble("\t", (void *)op, pkg->size / 4 - 4 - 2 * nops);
 		}
 	}
 
