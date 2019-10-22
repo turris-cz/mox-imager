@@ -8,6 +8,6 @@
 
 #include "utils.h"
 
-extern void disassemble(const char *lineprefix, const u32 *input, size_t len);
+extern int disassemble(const char *lineprefix, const u32 *input, size_t len);
 
 #endif /* _INSTR_H_ */

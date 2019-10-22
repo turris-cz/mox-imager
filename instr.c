@@ -119,12 +119,14 @@ static void disasm(const char *lineprefix, struct insn *insn, const u32 *params,
 	char *p = insn->help;
 	struct op *op;
 
-	printf("%s%-27s", lineprefix, insn->name);
-	for (i = 1; i <= args; ++i)
-		printf(" 0x%08X", params[i]);
-	for (; i <= 5; ++i)
-		printf("           ");
-	printf(" # ");
+	if (lineprefix) {
+		printf("%s%-27s", lineprefix, insn->name);
+		for (i = 1; i <= args; ++i)
+			printf(" 0x%08X", params[i]);
+		for (; i <= 5; ++i)
+			printf("           ");
+		printf(" # ");
+	}
 
 	while (*p) {
 		if (*p != '%') {
@@ -162,12 +164,14 @@ static void disasm(const char *lineprefix, struct insn *insn, const u32 *params,
 	}
 	buf[len++] = '\0';
 
-	printf("%s\n", buf);
+	if (lineprefix)
+		printf("%s\n", buf);
 }
 
-void disassemble(const char *lineprefix, const u32 *input, size_t len)
+int disassemble(const char *lineprefix, const u32 *input, size_t len)
 {
 	size_t pos = 0;
+	int res = 0;
 
 	while (len > 0) {
 		struct insn *insn = find_insn(input[0]);
@@ -185,5 +189,8 @@ void disassemble(const char *lineprefix, const u32 *input, size_t len)
 		input += args + 1;
 		pos += args + 1;
 		len -= args + 1;
+		++res;
 	}
+
+	return res;
 }

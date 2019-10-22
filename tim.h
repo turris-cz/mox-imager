@@ -94,6 +94,7 @@ typedef struct {
 #define PKG_PINP	name2id("PINP")
 #define PKG_Term	name2id("Term")
 
+#define SIZEOF_RESPKG_HDR	8
 typedef struct {
 	u32 id;
 	u32 size;
