@@ -1,6 +1,7 @@
 *.o
 *.bin
 *.key
+*.patch
 bin2c
 mox-imager
 uart-images
