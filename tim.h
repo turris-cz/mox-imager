@@ -262,7 +262,7 @@ static inline keyinfo_t *tim_key(timhdr_t *timhdr, int i)
 	if (i < 0 || i >= tim_nkeys(timhdr))
 		return NULL;
 
-	lastimg = tim_image(timhdr, tim_nimages(timhdr) - 1) + 1;
+	lastimg = tim_image(timhdr, tim_nimages(timhdr) - 1);
 	return ((keyinfo_t *) (lastimg + 1)) + i;
 }
 
