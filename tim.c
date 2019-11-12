@@ -180,20 +180,41 @@ static respkg_t *tim_find_pkg(image_t *tim, u32 id)
 	return pkg;
 }
 
-u32 tim_imap_pkg_addr(image_t *tim, u32 id)
+static struct imap_map *tim_imap_pkg_find_map(image_t *tim, u32 id)
 {
 	respkg_t *pkg;
 	int i;
 
 	pkg = tim_find_pkg(tim, PKG_IMAP);
 	if (!pkg)
-		return -1;
+		return NULL;
 
 	for (i = 0; i < le32toh(pkg->imap.nmaps); ++i)
 		if (le32toh(pkg->imap.maps[i].id) == id)
-			return le32toh(pkg->imap.maps[i].flashentryaddr[0]);
+			return &pkg->imap.maps[i];
 
-	return -1;
+	return NULL;
+}
+
+u32 tim_imap_pkg_addr(image_t *tim, u32 id)
+{
+	struct imap_map *map = tim_imap_pkg_find_map(tim, id);
+
+	if (!map)
+		return -1;
+
+	return le32toh(map->flashentryaddr[0]);
+}
+
+void tim_imap_pkg_addr_set(image_t *tim, u32 id, u32 flashentry, u32 partition)
+{
+	struct imap_map *map = tim_imap_pkg_find_map(tim, id);
+
+	if (!map)
+		die("Cannot find IMAP package or requested map %s", id2name(id));
+
+	map->flashentryaddr[0] = htole32(flashentry);
+	map->partitionnumber = htole32(partition);
 }
 
 static void tim_remove_pkg(image_t *tim, u32 id)
@@ -730,7 +751,7 @@ void tim_set_boot(image_t *tim, u32 boot)
 }
 
 void tim_add_image(image_t *tim, image_t *image, u32 after, u32 loadaddr,
-		   u32 flashaddr, int hash)
+		   u32 flashaddr, u32 partition, int hash)
 {
 	timhdr_t *timhdr;
 	imginfo_t *timinfo, *prev, *this, *next;
@@ -765,6 +786,7 @@ void tim_add_image(image_t *tim, image_t *image, u32 after, u32 loadaddr,
 	prev->nextid = this->id;
 	this->size = htole32(image->size);
 	this->flashentryaddr = htole32(flashaddr);
+	this->partitionnumber = htole32(partition);
 	this->loadaddr = htole32(loadaddr);
 	this->hashalg = htole32(HASH_SHA512);
 	this->sizetohash = hash ? this->size : 0;

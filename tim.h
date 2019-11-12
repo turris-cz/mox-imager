@@ -102,7 +102,7 @@ typedef struct {
 		u32 data[0];
 		struct {
 			u32 nmaps;
-			struct {
+			struct imap_map {
 				u32 id;
 				u32 type;
 				u32 flashentryaddr[2];
@@ -288,6 +288,7 @@ static inline int tim_is_trusted(const image_t *tim)
 
 extern void tim_image_set_loadaddr(image_t *tim, u32 id, u32 loadaddr);
 extern u32 tim_imap_pkg_addr(image_t *tim, u32 id);
+extern void tim_imap_pkg_addr_set(image_t *tim, u32 id, u32 flashentry, u32 partition);
 extern void tim_parse(image_t *tim, int *numimagesp);
 extern void tim_enable_hash(image_t *tim, u32 id, int enable);
 extern void tim_rehash(image_t *tim);
@@ -296,7 +297,7 @@ extern void tim_sign(image_t *tim, EC_KEY *key);
 extern void tim_set_boot(image_t *tim, u32 boot);
 extern void tim_remove_image(image_t *tim, u32 id);
 extern void tim_add_image(image_t *tim, image_t *image, u32 after, u32 loadaddr,
-			  u32 flashaddr, int hash);
+			  u32 flashaddr, u32 partition, int hash);
 extern void tim_add_key(image_t *tim, u32 id, EC_KEY *key);
 extern void tim_minimal_image(image_t *tim, int secure);
 

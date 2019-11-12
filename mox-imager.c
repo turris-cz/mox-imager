@@ -26,6 +26,8 @@
 
 #include "wtmi.c"
 
+#define MOX_TIMN_OFFSET		0x1000
+#define MOX_WTMI_OFFSET		0x4000
 #define MOX_U_BOOT_OFFSET	0x20000
 #define MOX_ENV_OFFSET		0x180000
 
@@ -119,7 +121,7 @@ static void save_flash_image(image_t *tim, const char *path)
 }
 
 static void do_create_trusted_image(const char *keyfile, const char *output,
-				    u32 bootfs)
+				    u32 bootfs, u32 partition)
 {
 	EC_KEY *key;
 	image_t *timh, *timn, *wtmi, *obmi;
@@ -128,14 +130,14 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	int fd;
 	u32 timh_loadaddr, timn_loadaddr;
 
-	if (bootfs == BOOTFS_SPINOR) {
+	if (bootfs == BOOTFS_SPINOR || bootfs == BOOTFS_EMMC) {
 		timh_loadaddr = 0x20006000;
 		timn_loadaddr = 0x20003000;
 	} else if (bootfs == BOOTFS_UART) {
 		timh_loadaddr = 0x20002000;
 		timn_loadaddr = 0x20006000;
 	} else {
-		die("Only UART/SPI modes are supported");
+		die("Only UART/SPI/EMMC modes are supported");
 	}
 
 	wtmi = image_find(name2id("WTMI"));
@@ -150,6 +152,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	timh = image_new(NULL, 0, TIMH_ID);
 	tim_minimal_image(timh, 1);
 	tim_set_boot(timh, bootfs);
+	tim_imap_pkg_addr_set(timh, name2id("CSKT"), MOX_TIMN_OFFSET, partition);
 	tim_image_set_loadaddr(timh, TIMH_ID, timh_loadaddr);
 	tim_add_key(timh, name2id("CSK0"), key);
 	tim_sign(timh, key);
@@ -161,13 +164,14 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	tim_minimal_image(timn, 2);
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timh, TIMN_ID, timn_loadaddr);
-	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, 0x4000, 1);
-	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET, 0);
+	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
+	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
+		      partition, 0);
 	tim_sign(timn, key);
 	tim_parse(timn, NULL);
 
-	memcpy(buf + 0x1000, timn->data, timn->size);
-	memcpy(buf + 0x4000, wtmi->data, wtmi->size);
+	memcpy(buf + MOX_TIMN_OFFSET, timn->data, timn->size);
+	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
 
 	fd = open(output, O_RDWR | O_CREAT, 0644);
 	if (fd < 0)
@@ -185,7 +189,8 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	close(fd);
 }
 
-static void do_create_untrusted_image(const char *output, u32 bootfs)
+static void do_create_untrusted_image(const char *output, u32 bootfs,
+				      u32 partition)
 {
 	image_t *timh, *wtmi, *obmi;
 	void *buf;
@@ -201,14 +206,15 @@ static void do_create_untrusted_image(const char *output, u32 bootfs)
 
 	timh = image_new(NULL, 0, TIMH_ID);
 	tim_minimal_image(timh, 0);
-	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, 0x4000, 1);
-	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET, 0);
+	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
+	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
+		      partition, 0);
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
 	tim_parse(timh, NULL);
 
 	memcpy(buf, timh->data, timh->size);
-	memcpy(buf + 0x4000, wtmi->data, wtmi->size);
+	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
 
 	fd = open(output, O_RDWR | O_CREAT, 0644);
 	if (fd < 0)
@@ -340,26 +346,26 @@ static void help(void)
 {
 	fprintf(stdout,
 		"Usage: mox-imager [OPTION]... [IMAGE]...\n\n"
-		"  -D, --device=TTY                       upload images via UART to TTY\n"
-		"  -F, --fd=FD                            TTY file descriptor\n"
-		"  -E, --send-escape-sequence             send escape sequence to force UART mode\n"
-		"  -o, --output=IMAGE                     output SPI NOR flash image to IMAGE\n"
-		"  -k, --key=KEY                          read ECDSA-521 private key from file KEY\n"
-		"  -r, --random-seed=FILE                 read random seed from file\n"
-		"  -R, --otp-read                         read OTP memory\n"
-		"  -d, --deploy                           deploy device (write OTP memory)\n"
-		"      --serial-number=SN                 serial number to write to OTP memory\n"
-		"      --mac-address=MAC                  MAC address to write to OTP memory\n"
-		"      --board-version=BV                 board version to write to OTP memory\n"
-		"      --otp-hash=HASH                    secure firmware hash as given by --get-otp-hash\n"
-		"  -g, --gen-key=KEY                      generate ECDSA-521 private key to file KEY\n"
-		"  -s, --sign                             sign TIM image with ECDSA-521 private key\n"
-		"      --create-trusted-image=SPI/UART    create secure image for SPI / UART (private key required)\n"
-		"      --create-untrusted-image=SPI/UART  create untrusted secure image (no private key required)\n"
-		"      --get-otp-hash                     print OTP hash of given secure firmware image\n"
-		"  -u, --hash-u-boot                      save OBMI (U-Boot) image hash to TIM\n"
-		"  -n, --no-u-boot                        remove OBMI (U-Boot) image from TIM\n"
-		"  -h, --help                             show this help and exit\n"
+		"  -D, --device=TTY                            upload images via UART to TTY\n"
+		"  -F, --fd=FD                                 TTY file descriptor\n"
+		"  -E, --send-escape-sequence                  send escape sequence to force UART mode\n"
+		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
+		"  -k, --key=KEY                               read ECDSA-521 private key from file KEY\n"
+		"  -r, --random-seed=FILE                      read random seed from file\n"
+		"  -R, --otp-read                              read OTP memory\n"
+		"  -d, --deploy                                deploy device (write OTP memory)\n"
+		"      --serial-number=SN                      serial number to write to OTP memory\n"
+		"      --mac-address=MAC                       MAC address to write to OTP memory\n"
+		"      --board-version=BV                      board version to write to OTP memory\n"
+		"      --otp-hash=HASH                         secure firmware hash as given by --get-otp-hash\n"
+		"  -g, --gen-key=KEY                           generate ECDSA-521 private key to file KEY\n"
+		"  -s, --sign                                  sign TIM image with ECDSA-521 private key\n"
+		"      --create-trusted-image=SPI/UART/EMMC    create secure image for SPI / UART (private key required)\n"
+		"      --create-untrusted-image=SPI/UART/EMMC  create untrusted secure image (no private key required)\n"
+		"      --get-otp-hash                          print OTP hash of given secure firmware image\n"
+		"  -u, --hash-u-boot                           save OBMI (U-Boot) image hash to TIM\n"
+		"  -n, --no-u-boot                             remove OBMI (U-Boot) image from TIM\n"
+		"  -h, --help                                  show this help and exit\n"
 		"\n");
 	exit(EXIT_SUCCESS);
 }
@@ -380,7 +386,7 @@ static const struct option long_options[] = {
 	{ "gen-key",			required_argument,	0,	'g' },
 	{ "sign",			no_argument,		0,	's' },
 	{ "create-trusted-image",	required_argument,	0,	'c' },
-	{ "create-untrusted-image",	no_argument,		0,	'C' },
+	{ "create-untrusted-image",	required_argument,	0,	'C' },
 	{ "get-otp-hash",		no_argument,		0,	'G' },
 	{ "hash-u-boot",		no_argument,		0,	'u' },
 	{ "no-u-boot",			no_argument,		0,	'n' },
@@ -394,7 +400,7 @@ int main(int argc, char **argv)
 		   *serial_number, *mac_address, *board_version, *otp_hash;
 	int sign, hash_u_boot, no_u_boot, otp_read, deploy, get_otp_hash,
 	    create_trusted_image, create_untrusted_image, send_escape;
-	u32 image_bootfs;
+	u32 image_bootfs, partition;
 	image_t *timh, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
 
@@ -481,6 +487,8 @@ int main(int argc, char **argv)
 				image_bootfs = BOOTFS_UART;
 			else if (!strcmp(optarg, "SPI"))
 				image_bootfs = BOOTFS_SPINOR;
+			else if (!strcmp(optarg, "EMMC"))
+				image_bootfs = BOOTFS_EMMC;
 			else
 				die("Invalid argument for parameter --create-[un]trusted-image");
 			if (c == 'c')
@@ -543,11 +551,17 @@ int main(int argc, char **argv)
 	for (; optind < argc; ++optind)
 		image_load(argv[optind]);
 
+	if (image_bootfs == BOOTFS_EMMC)
+		/* Boot partition on eMMC is partition 2 */
+		partition = 2;
+	else
+		partition = 0;
+
 	if (create_trusted_image) {
-		do_create_trusted_image(keyfile, output, image_bootfs);
+		do_create_trusted_image(keyfile, output, image_bootfs, partition);
 		exit(EXIT_SUCCESS);
 	} else if (create_untrusted_image) {
-		do_create_untrusted_image(output, image_bootfs);
+		do_create_untrusted_image(output, image_bootfs, partition);
 		exit(EXIT_SUCCESS);
 	}
 
@@ -570,7 +584,7 @@ int main(int argc, char **argv)
 		timh = image_new(NULL, 0, TIMH_ID);
 		tim_minimal_image(timh, 0);
 		wtmi = image_new((void *) wtmi_data, wtmi_data_size, WTMI_ID);
-		tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, 0, 1);
+		tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, 0, 0, 1);
 		tim_rehash(timh);
 		nimages = 2;
 		trusted = 0;
