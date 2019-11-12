@@ -185,7 +185,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	close(fd);
 }
 
-static void do_create_untrusted_image(const char *output)
+static void do_create_untrusted_image(const char *output, u32 bootfs)
 {
 	image_t *timh, *wtmi, *obmi;
 	void *buf;
@@ -203,7 +203,7 @@ static void do_create_untrusted_image(const char *output)
 	tim_minimal_image(timh, 0);
 	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, 0x4000, 1);
 	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET, 0);
-	tim_set_boot(timh, BOOTFS_SPINOR);
+	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
 	tim_parse(timh, NULL);
 
@@ -340,26 +340,26 @@ static void help(void)
 {
 	fprintf(stdout,
 		"Usage: mox-imager [OPTION]... [IMAGE]...\n\n"
-		"  -D, --device=TTY                     upload images via UART to TTY\n"
-		"  -F, --fd=FD                          TTY file descriptor\n"
-		"  -E, --send-escape-sequence           send escape sequence to force UART mode\n"
-		"  -o, --output=IMAGE                   output SPI NOR flash image to IMAGE\n"
-		"  -k, --key=KEY                        read ECDSA-521 private key from file KEY\n"
-		"  -r, --random-seed=FILE               read random seed from file\n"
-		"  -R, --otp-read                       read OTP memory\n"
-		"  -d, --deploy                         deploy device (write OTP memory)\n"
-		"      --serial-number=SN               serial number to write to OTP memory\n"
-		"      --mac-address=MAC                MAC address to write to OTP memory\n"
-		"      --board-version=BV               board version to write to OTP memory\n"
-		"      --otp-hash=HASH                  secure firmware hash as given by --get-otp-hash\n"
-		"  -g, --gen-key=KEY                    generate ECDSA-521 private key to file KEY\n"
-		"  -s, --sign                           sign TIM image with ECDSA-521 private key\n"
-		"      --create-trusted-image=SPI/UART  create secure image for SPI / UART (private key required)\n"
-		"      --create-untrusted-image         create untrusted secure image (no private key required)\n"
-		"      --get-otp-hash                   print OTP hash of given secure firmware image\n"
-		"  -u, --hash-u-boot                    save OBMI (U-Boot) image hash to TIM\n"
-		"  -n, --no-u-boot                      remove OBMI (U-Boot) image from TIM\n"
-		"  -h, --help                           show this help and exit\n"
+		"  -D, --device=TTY                       upload images via UART to TTY\n"
+		"  -F, --fd=FD                            TTY file descriptor\n"
+		"  -E, --send-escape-sequence             send escape sequence to force UART mode\n"
+		"  -o, --output=IMAGE                     output SPI NOR flash image to IMAGE\n"
+		"  -k, --key=KEY                          read ECDSA-521 private key from file KEY\n"
+		"  -r, --random-seed=FILE                 read random seed from file\n"
+		"  -R, --otp-read                         read OTP memory\n"
+		"  -d, --deploy                           deploy device (write OTP memory)\n"
+		"      --serial-number=SN                 serial number to write to OTP memory\n"
+		"      --mac-address=MAC                  MAC address to write to OTP memory\n"
+		"      --board-version=BV                 board version to write to OTP memory\n"
+		"      --otp-hash=HASH                    secure firmware hash as given by --get-otp-hash\n"
+		"  -g, --gen-key=KEY                      generate ECDSA-521 private key to file KEY\n"
+		"  -s, --sign                             sign TIM image with ECDSA-521 private key\n"
+		"      --create-trusted-image=SPI/UART    create secure image for SPI / UART (private key required)\n"
+		"      --create-untrusted-image=SPI/UART  create untrusted secure image (no private key required)\n"
+		"      --get-otp-hash                     print OTP hash of given secure firmware image\n"
+		"  -u, --hash-u-boot                      save OBMI (U-Boot) image hash to TIM\n"
+		"  -n, --no-u-boot                        remove OBMI (U-Boot) image from TIM\n"
+		"  -h, --help                             show this help and exit\n"
 		"\n");
 	exit(EXIT_SUCCESS);
 }
@@ -394,7 +394,7 @@ int main(int argc, char **argv)
 		   *serial_number, *mac_address, *board_version, *otp_hash;
 	int sign, hash_u_boot, no_u_boot, otp_read, deploy, get_otp_hash,
 	    create_trusted_image, create_untrusted_image, send_escape;
-	u32 trusted_image_bootfs;
+	u32 image_bootfs;
 	image_t *timh, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
 
@@ -476,16 +476,17 @@ int main(int argc, char **argv)
 			sign = 1;
 			break;
 		case 'c':
-			if (!strcmp(optarg, "UART"))
-				trusted_image_bootfs = BOOTFS_UART;
-			else if (!strcmp(optarg, "SPI"))
-				trusted_image_bootfs = BOOTFS_SPINOR;
-			else
-				die("Invalid argument for parameter --create-trusted-image");
-			create_trusted_image = 1;
-			break;
 		case 'C':
-			create_untrusted_image = 1;
+			if (!strcmp(optarg, "UART"))
+				image_bootfs = BOOTFS_UART;
+			else if (!strcmp(optarg, "SPI"))
+				image_bootfs = BOOTFS_SPINOR;
+			else
+				die("Invalid argument for parameter --create-[un]trusted-image");
+			if (c == 'c')
+				create_trusted_image = 1;
+			else
+				create_untrusted_image = 1;
 			break;
 		case 'G':
 			get_otp_hash = 1;
@@ -543,10 +544,10 @@ int main(int argc, char **argv)
 		image_load(argv[optind]);
 
 	if (create_trusted_image) {
-		do_create_trusted_image(keyfile, output, trusted_image_bootfs);
+		do_create_trusted_image(keyfile, output, image_bootfs);
 		exit(EXIT_SUCCESS);
 	} else if (create_untrusted_image) {
-		do_create_untrusted_image(output);
+		do_create_untrusted_image(output, image_bootfs);
 		exit(EXIT_SUCCESS);
 	}
 
