@@ -6,7 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
+#include <sys/ioctl.h>
+#include <asm/termbits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -120,9 +121,19 @@ static void initwtp(void)
 		die("Wrong reply: \"%.*s\"", 5, buf);
 }
 
-static void do_open(const char *path)
+static inline int tcdrain(int fd)
 {
-	struct termios opts;
+	return ioctl(fd, TCSBRK, 1);
+}
+
+static inline int tcflush(int fd, int q)
+{
+	return ioctl(fd, TCFLSH, q);
+}
+
+static void do_open(const char *path, int higher_baudrate)
+{
+	struct termios2 opts;
 
 	wtpfd = open(path, O_RDWR | O_NOCTTY);
 
@@ -130,9 +141,9 @@ static void do_open(const char *path)
 		die("Cannot open %s: %m", path);
 
 	memset(&opts, 0, sizeof(opts));
-	tcgetattr(wtpfd, &opts);
-	cfsetispeed(&opts, B115200);
-	cfsetospeed(&opts, B115200);
+	ioctl(wtpfd, TCGETS2, &opts);
+	opts.c_cflag &= ~CBAUD;
+	opts.c_cflag |= B115200;
 	opts.c_cc[VMIN] = 0;
 	opts.c_cc[VTIME] = 0;
 	opts.c_iflag = 0;
@@ -140,7 +151,23 @@ static void do_open(const char *path)
 	opts.c_oflag = 0;
 	opts.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
 	opts.c_cflag |= CS8 | CREAD | CLOCAL;
-	tcsetattr(wtpfd, TCSANOW, &opts);
+	ioctl(wtpfd, TCSETS2, &opts);
+	tcflush(wtpfd, TCIFLUSH);
+
+	if (higher_baudrate) {
+		const char *cmd = "w c0012014 0f0f0f0f\r";
+
+		xwrite(cmd, strlen(cmd));
+		tcdrain(wtpfd);
+		usleep(10000);
+		tcflush(wtpfd, TCIFLUSH);
+		opts.c_cflag &= ~CBAUD;
+		opts.c_cflag |= BOTHER;
+		opts.c_ispeed = opts.c_ospeed = 230400;
+		ioctl(wtpfd, TCSETS2, &opts);
+		usleep(10000);
+		tcflush(wtpfd, TCIFLUSH);
+	}
 }
 
 void setwtp(const char *fdstr, int send_escape)
@@ -157,9 +184,9 @@ void setwtp(const char *fdstr, int send_escape)
 		initwtp();
 }
 
-void openwtp(const char *path, int send_escape)
+void openwtp(const char *path, int send_escape, int higher_baudrate)
 {
-	do_open(path);
+	do_open(path, higher_baudrate);
 
 	if (send_escape)
 		escape_seq();
@@ -252,7 +279,8 @@ static void preamble(void)
 	}
 
 	if (memcmp(buf, "\x00\xd3\x02\x2b", 4))
-		die("Wrong reply to preamble: \"%.*s\"", 4, buf);
+		die("Wrong reply to preamble: \"%.*s\" (%02x %02x %02x %02x)",
+		    4, buf, buf[0], buf[1], buf[2], buf[3]);
 }
 
 static void getversion(void)

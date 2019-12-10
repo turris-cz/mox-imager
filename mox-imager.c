@@ -347,6 +347,7 @@ static void help(void)
 	fprintf(stdout,
 		"Usage: mox-imager [OPTION]... [IMAGE]...\n\n"
 		"  -D, --device=TTY                            upload images via UART to TTY\n"
+		"  -b, --higher-baudrate                       use 230400 baudrate\n"
 		"  -F, --fd=FD                                 TTY file descriptor\n"
 		"  -E, --send-escape-sequence                  send escape sequence to force UART mode\n"
 		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
@@ -372,6 +373,7 @@ static void help(void)
 
 static const struct option long_options[] = {
 	{ "device",			required_argument,	0,	'D' },
+	{ "higher-baudrate",		no_argument,		0,	'b' },
 	{ "fd",				required_argument,	0,	'F' },
 	{ "send-escape-sequence",	no_argument,		0,	'E' },
 	{ "output",			required_argument,	0,	'o' },
@@ -399,7 +401,8 @@ int main(int argc, char **argv)
 	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey,
 		   *serial_number, *mac_address, *board_version, *otp_hash;
 	int sign, hash_u_boot, no_u_boot, otp_read, deploy, get_otp_hash,
-	    create_trusted_image, create_untrusted_image, send_escape;
+	    create_trusted_image, create_untrusted_image, send_escape,
+	    higher_baudrate;
 	u32 image_bootfs, partition;
 	image_t *timh, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
@@ -407,13 +410,14 @@ int main(int argc, char **argv)
 	tty = fdstr = output = keyfile = seed = genkey = serial_number =
               mac_address = board_version = otp_hash = NULL;
 	sign = hash_u_boot = no_u_boot = otp_read = deploy = get_otp_hash =
-	     create_trusted_image = create_untrusted_image = send_escape = 0;
+	     create_trusted_image = create_untrusted_image = send_escape =
+	     higher_baudrate = 0;
 
 	while (1) {
 		int optidx;
 		char c;
 
-		c = getopt_long(argc, argv, "D:F:Eo:k:r:Rdg:sunh", long_options,
+		c = getopt_long(argc, argv, "D:bF:Eo:k:r:Rdg:sunh", long_options,
 				NULL);
 		if (c == -1)
 			break;
@@ -423,6 +427,9 @@ int main(int argc, char **argv)
 			if (tty)
 				die("Device already given");
 			tty = optarg;
+			break;
+		case 'b':
+			higher_baudrate = 1;
 			break;
 		case 'F':
 			if (fdstr)
@@ -649,7 +656,7 @@ int main(int argc, char **argv)
 		if (fdstr)
 			setwtp(fdstr, send_escape);
 		else
-			openwtp(tty, send_escape);
+			openwtp(tty, send_escape, higher_baudrate);
 
 		nimages_all = nimages;
 		if (timn)
