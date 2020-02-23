@@ -38,7 +38,7 @@ static struct insn insns[] = {
 	DECL_INSN(TEST_IF_NOT_ZERO_AND_SET,	11,	"if ((*%x & %x) != 0) in *%x with mask %x set bits %x")
 	DECL_INSN(LOAD_SM_ADDR,			12,	"SM[%d] = *%x")
 	DECL_INSN(LOAD_SM_VAL,			13,	"SM[%d] = %x")
-	DECL_INSN(STORE_SM_ADDR,		14,	"*%x -> SM[%d]")
+	DECL_INSN(STORE_SM_ADDR,		14,	"*%2x = SM[%1d]")
 	DECL_INSN(MOV_SM_SM,			15,	"SM[%d] = SM[%d]")
 	DECL_INSN(RSHIFT_SM_VAL,		16,	"SM[%d] >>= %d")
 	DECL_INSN(LSHIFT_SM_VAL,		17,	"SM[%d] <<= %d")
