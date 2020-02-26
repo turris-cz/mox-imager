@@ -13,6 +13,7 @@
 struct insn {
 	char *name;
 	u8 code;
+	u8 args;
 	char *help;
 };
 
@@ -59,7 +60,7 @@ static struct insn insns[] = {
 	DECL_INSN(SUB_SM_SM0,			32,	"SM[%d] -= SM[%d]")
 	DECL_INSN(LOAD_SM_FROM_ADDR_IN_SM,	33,	"SM[%d] = *SM[%d]")
 	DECL_INSN(STORE_SM_TO_ADDR_IN_SM,	34,	"*SM[%d] = SM[%d]")
-	{ NULL, 0, NULL }
+	{ NULL, 0, 0, NULL }
 };
 
 struct op {
@@ -99,17 +100,31 @@ static struct op *find_op(u32 code)
 	return NULL;
 }
 
-static int insn_args(const char *help)
+static u8 count_args(const char *help)
 {
-	int res = 0;
+	u8 res = 0, max = 0;
 
 	while (*help) {
-		if (*help == '%')
+		if (*help++ == '%') {
 			++res;
-		++help;
+			if (*help >= '1' && *help <= '9') {
+				if (*help - '0' > max)
+					max = *help - '0';
+				++help;
+				continue;
+			}
+		}
 	}
 
-	return res;
+	return max ? max : res;
+}
+
+static __attribute__((constructor)) void insns_init(void)
+{
+	struct insn *insn;
+
+	for (insn = insns; insn->name; ++insn)
+		insn->args = count_args(insn->help);
 }
 
 static void disasm(const char *lineprefix, struct insn *insn, const u32 *params, int args, size_t pos)
@@ -175,20 +190,18 @@ int disassemble(const char *lineprefix, const u32 *input, size_t len)
 
 	while (len > 0) {
 		struct insn *insn = find_insn(input[0]);
-		int args;
 
 		if (!insn)
 			die("Unrecognized instruction with code %d at position %u", input[0], pos);
 
-		args = insn_args(insn->help);
-		if (len - 1 < args)
-			die("Instruction %d (%s) at position %u has too few arguments (%d, needs %d)", input[0], insn->name, pos, len - 1, args);
+		if (len - 1 < insn->args)
+			die("Instruction %d (%s) at position %u has too few arguments (%d, needs %d)", input[0], insn->name, pos, len - 1, insn->args);
 
-		disasm(lineprefix, insn, input, args, pos);
+		disasm(lineprefix, insn, input, insn->args, pos);
 
-		input += args + 1;
-		pos += args + 1;
-		len -= args + 1;
+		input += insn->args + 1;
+		pos += insn->args + 1;
+		len -= insn->args + 1;
 		++res;
 	}
 
