@@ -16,7 +16,7 @@ GPPS = $(patsubst %.gpp,%.c,$(wildcard gpp/*.gpp))
 all: mox-imager
 
 clean:
-	rm -f mox-imager $(OBJS) bin2c gppc bin2c.o wtmi.c $(GPPS)
+	rm -f mox-imager $(OBJS) bin2c gppc bin2c.o wtmi.c $(GPPS) $(patsubst %.c,%.gpp.bin,$(GPPS)) $(patsubst %.c,%.gpp.pre,$(GPPS))
 
 mox-imager: $(OBJS)
 	$(CC) $(CFLAGS) -o mox-imager $(OBJS) $(LDFLAGS)
@@ -35,8 +35,14 @@ bin2c: bin2c.o
 gppc: $(GPPC_SRCS)
 	$(CC) $(CPPFLAGS) -DGPP_COMPILER $(CFLAGS) -o $@ $(GPPC_SRCS)
 
-$(GPPS): %.c: %.gpp gppc bin2c
-	$(CC) -E -x assembler-with-cpp $< | ./gppc | ./bin2c GPP_$(patsubst gpp/%.c,%,$@) >$@
+$(patsubst %.c,%.gpp.pre,$(GPPS)): %.gpp.pre: %.gpp
+	$(CC) -E -x assembler-with-cpp $< >$@
+
+$(patsubst %.c,%.gpp.bin,$(GPPS)): %.gpp.bin: %.gpp.pre gppc
+	./gppc -o $@ $<
+
+$(GPPS): %.c: %.gpp.bin bin2c
+	./bin2c GPP_$(patsubst gpp/%.c,%,$@) <$< >$@
 
 tim.c: $(GPPS)
 
