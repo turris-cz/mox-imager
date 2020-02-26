@@ -330,6 +330,12 @@ static int assemble_insn(u32 *out, const char *line)
 				return -1;
 			if (arg == 5 && parse_label(&out[arg], &p))
 				return -1;
+		} else if ((p[0] == 'l' || p[0] == 'L') &&
+			   (p[1] == 'b' || p[1] == 'B') &&
+			   (p[2] == 'l' || p[2] == 'L')) {
+			p += 3;
+			if (parse_label(&out[arg], &p))
+				return -1;
 		} else {
 			char *end;
 			u64 x;
