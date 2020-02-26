@@ -403,6 +403,8 @@ char minimal_ddr3[] =
 
 const size_t minimal_ddr3_size = 1624;
 
+#include "gpp/ddr.c"
+
 void tim_minimal_image(image_t *tim, int secure)
 {
 	void *data, *from;
@@ -443,7 +445,7 @@ void tim_minimal_image(image_t *tim, int secure)
 				0, 0, 0, 0, 0, 1, 0);
 		tim_add_gpp_pkg(tim, "GPP2", GPP_gpp2, GPP_gpp2_size,
 				0, 0, 0, 0, 0, 1, 0);
-		tim_add_gpp_pkg(tim, "DDR3", minimal_ddr3, minimal_ddr3_size,
+		tim_add_gpp_pkg(tim, "DDR3", GPP_ddr, GPP_ddr_size,
 				1, 0, 0, 0, 0, 0, 0);
 	}
 }
