@@ -209,6 +209,7 @@ int disassemble(const char *lineprefix, const u32 *input, size_t len)
 	return res;
 }
 
+#ifdef GPP_COMPILER
 static struct insn *find_insn_by_name(const char *name, size_t len)
 {
 	struct insn *insn;
@@ -364,17 +365,12 @@ static int assemble_insn(u32 *out, const char *line)
 	return arg;
 }
 
-int assemble(u32 **out, const char *file)
+int assemble(u32 **out, FILE *fp)
 {
-	FILE *fp;
 	char *line;
 	ssize_t rd;
 	size_t n;
 	int outlen, outsize;
-
-	fp = fopen(file, "r");
-	if (!fp)
-		die("Cannot open file %s: %m", file);
 
 	outlen = 0;
 	outsize = 64;
@@ -393,13 +389,12 @@ int assemble(u32 **out, const char *file)
 
 		res = assemble_insn(*out + outlen, line);
 		if (res < 0)
-			die("Error assembling file %s", file);
+			die("Error assembling");
 
 		outlen += res;
 	}
 
 	*out = xrealloc(*out, sizeof(u32) * outlen);
-	fclose(fp);
-
 	return outlen;
 }
+#endif /* GPP_COMPILER */
