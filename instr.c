@@ -221,7 +221,7 @@ static struct insn *find_insn_by_name(const char *name, size_t len)
 	return NULL;
 }
 
-static int parse_op(u32 *op, const char **pp)
+static void parse_op(u32 *op, const char **pp)
 {
 	const char *p = *pp;
 
@@ -255,7 +255,7 @@ err:
 	die("Cannot parse operator near \"%s\"", *pp);
 }
 
-static int parse_label(u32 *lbl, const char **pp)
+static void parse_label(u32 *lbl, const char **pp)
 {
 	const char *p = *pp;
 
