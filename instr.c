@@ -226,7 +226,7 @@ static int parse_op(u32 *op, const char **pp)
 	const char *p = *pp;
 
 	if (!*p)
-		return -1;
+		goto err;
 
 	if (p[1] == '=') {
 		*pp += 2;
@@ -239,7 +239,7 @@ static int parse_op(u32 *op, const char **pp)
 		else if (*p == '>')
 			*op = 6;
 		else
-			return -1;
+			goto err;
 	} else {
 		*pp += 1;
 		if (*p == '<')
@@ -247,10 +247,12 @@ static int parse_op(u32 *op, const char **pp)
 		else if (*p == '>')
 			*op = 5;
 		else
-			return -1;
+			goto err;
 	}
 
-	return 0;
+	return;
+err:
+	die("Cannot parse operator near \"%s\"", *pp);
 }
 
 static int parse_label(u32 *lbl, const char **pp)
@@ -264,17 +266,16 @@ static int parse_label(u32 *lbl, const char **pp)
 		p += 2;
 		x = strtoull(p, &end, 16);
 		if (end - p > 8)
-			return -1;
+			goto err;
 
 		*lbl = x;
 		*pp = end;
-		return 0;
 	} else {
 		size_t i, len;
 
 		len = strspn(p, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_0123456789");
 		if (!len || len > 4)
-			return -1;
+			goto err;
 
 		*lbl = 0;
 		for (i = 0; i < len; ++i) {
@@ -283,8 +284,11 @@ static int parse_label(u32 *lbl, const char **pp)
 		}
 
 		*pp = p + len;
-		return 0;
 	}
+
+	return;
+err:
+	die("Cannot parse label near \"%s\"", *pp);
 }
 
 static const char *skip_spaces(const char *p)
@@ -307,11 +311,11 @@ static int assemble_insn(u32 *out, const char *line)
 
 	len = strspn(p, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_");
 	if (!len)
-		return -1;
+		die("Unrecognized token on line \"%s\"", line);
 
 	insn = find_insn_by_name(p, len);
 	if (!insn)
-		return -1;
+		die("Unknown instruction \"%.*s\"", (int)len, p);
 
 	p += len;
 	p = skip_spaces(p);
@@ -323,19 +327,17 @@ static int assemble_insn(u32 *out, const char *line)
 
 	for (arg = 1; arg < insn->args + 1; ++arg) {
 		if (insn->code == 24 || insn->code == 27) {
-			if (parse_label(&out[arg], &p))
-				return -1;
+			parse_label(&out[arg], &p);
 		} else if ((insn->code == 25 || insn->code == 26) && (arg == 4 || arg == 5)) {
-			if (arg == 4 && parse_op(&out[arg], &p))
-				return -1;
-			if (arg == 5 && parse_label(&out[arg], &p))
-				return -1;
+			if (arg == 4)
+				parse_op(&out[arg], &p);
+			if (arg == 5)
+				parse_label(&out[arg], &p);
 		} else if ((p[0] == 'l' || p[0] == 'L') &&
 			   (p[1] == 'b' || p[1] == 'B') &&
 			   (p[2] == 'l' || p[2] == 'L')) {
 			p += 3;
-			if (parse_label(&out[arg], &p))
-				return -1;
+			parse_label(&out[arg], &p);
 		} else {
 			char *end;
 			u64 x;
@@ -345,7 +347,7 @@ static int assemble_insn(u32 *out, const char *line)
 
 			x = strtoull(p, &end, 0);
 			if (x > 0xffffffff)
-				return -1;
+				die("Constant too big on line \"%s\"", line);
 
 			out[arg] = x;
 			p = end;
@@ -357,16 +359,16 @@ static int assemble_insn(u32 *out, const char *line)
 		}
 
 		if (!isspace(*p))
-			return -1;
+			die("Unrecognized token on line \"%s\"", line);
 
 		p = skip_spaces(p);
 	}
 
 	if (arg < insn->args + 1)
-		return -1;
+		die("Too few arguments (%i < %i) on line \"%s\"", arg - 1, insn->args, line);
 
 	if (*p != '\0' & *p != '\n' && *p != '#' && *p != ';')
-		return -1;
+		die("Unrecognized token on line \"%s\"", line);
 
 	return arg;
 }
@@ -394,9 +396,6 @@ int assemble(u32 **out, FILE *fp)
 		}
 
 		res = assemble_insn(*out + outlen, line);
-		if (res < 0)
-			die("Error assembling");
-
 		outlen += res;
 	}
 
