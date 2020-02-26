@@ -60,7 +60,7 @@ static struct insn insns[] = {
 	DECL_INSN(SUB_SM_VAL,			31,	"SM[%d] -= %d")
 	DECL_INSN(SUB_SM_SM,			32,	"SM[%d] -= SM[%d]")
 	DECL_INSN(LOAD_SM_FROM_ADDR_IN_SM,	33,	"SM[%d] = *SM[%d]")
-	DECL_INSN(STORE_SM_TO_ADDR_IN_SM,	34,	"*SM[%d] = SM[%d]")
+	DECL_INSN(STORE_SM_TO_ADDR_IN_SM,	34,	"*SM[%2d] = SM[%1d]")
 	{ NULL, 0, 0, NULL }
 };
 
