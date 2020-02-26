@@ -39,3 +39,11 @@ void *xmalloc(size_t sz)
 		die("Out of memory");
 	return res;
 }
+
+void *xrealloc(void *ptr, size_t sz)
+{
+	void *res = realloc(ptr, sz);
+	if (sz && !res)
+		die("Out of memory");
+	return res;
+}

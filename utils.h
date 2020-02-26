@@ -15,6 +15,7 @@ typedef unsigned long long u64;
 extern __attribute__((noreturn)) void die(const char *fmt, ...);
 extern double now(void);
 extern void *xmalloc(size_t sz);
+extern void *xrealloc(void *ptr, size_t sz);
 
 static inline u32 name2id(const char *name)
 {

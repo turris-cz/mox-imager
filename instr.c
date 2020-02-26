@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <endian.h>
+#include <ctype.h>
 #include "utils.h"
 
 struct insn {
@@ -206,4 +207,199 @@ int disassemble(const char *lineprefix, const u32 *input, size_t len)
 	}
 
 	return res;
+}
+
+static struct insn *find_insn_by_name(const char *name, size_t len)
+{
+	struct insn *insn;
+
+	for (insn = insns; insn->name; ++insn)
+		if (!strncasecmp(name, insn->name, len) && !insn->name[len])
+			return insn;
+
+	return NULL;
+}
+
+static int parse_op(u32 *op, const char **pp)
+{
+	const char *p = *pp;
+
+	if (!*p)
+		return -1;
+
+	if (p[1] == '=') {
+		*pp += 2;
+		if (*p == '=')
+			*op = 1;
+		else if (*p == '!')
+			*op = 2;
+		else if (*p == '<')
+			*op = 4;
+		else if (*p == '>')
+			*op = 6;
+		else
+			return -1;
+	} else {
+		*pp += 1;
+		if (*p == '<')
+			*op = 3;
+		else if (*p == '>')
+			*op = 5;
+		else
+			return -1;
+	}
+
+	return 0;
+}
+
+static int parse_label(u32 *lbl, const char **pp)
+{
+	const char *p = *pp;
+
+	if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+		char *end;
+		u64 x;
+
+		p += 2;
+		x = strtoull(p, &end, 16);
+		if (end - p > 8)
+			return -1;
+
+		*lbl = x;
+		*pp = end;
+		return 0;
+	} else {
+		size_t i, len;
+
+		len = strspn(p, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_0123456789");
+		if (!len || len > 4)
+			return -1;
+
+		*lbl = 0;
+		for (i = 0; i < len; ++i) {
+			*lbl <<= 8;
+			*lbl |= p[len - i - 1];
+		}
+
+		*pp = p + len;
+		return 0;
+	}
+}
+
+static const char *skip_spaces(const char *p)
+{
+	while (isspace(*p))
+		++p;
+	return p;
+}
+
+static int assemble_insn(u32 *out, const char *line)
+{
+	const char *p = line;
+	struct insn *insn;
+	int arg;
+	size_t len;
+
+	p = skip_spaces(p);
+	if (*p == '\0' || *p == '\n' || *p == ';' || *p == '#')
+		return 0;
+
+	len = strspn(p, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_");
+	if (!len)
+		return -1;
+
+	insn = find_insn_by_name(p, len);
+	if (!insn)
+		return -1;
+
+	p += len;
+	p = skip_spaces(p);
+
+	if (*p == ':')
+		p = skip_spaces(p + 1);
+
+	out[0] = insn->code;
+
+	for (arg = 1; arg < insn->args + 1; ++arg) {
+		if (insn->code == 24 || insn->code == 27) {
+			if (parse_label(&out[arg], &p))
+				return -1;
+		} else if ((insn->code == 25 || insn->code == 26) && (arg == 4 || arg == 5)) {
+			if (arg == 4 && parse_op(&out[arg], &p))
+				return -1;
+			if (arg == 5 && parse_label(&out[arg], &p))
+				return -1;
+		} else {
+			char *end;
+			u64 x;
+
+			if ((p[0] == 's' || p[0] == 'S') && (p[1] == 'm' || p[1] == 'M'))
+				p += 2;
+
+			x = strtoull(p, &end, 0);
+			if (x > 0xffffffff)
+				return -1;
+
+			out[arg] = x;
+			p = end;
+		}
+
+		if (*p == '\0' || *p == '\n' || *p == '#' || *p == ';') {
+			++arg;
+			break;
+		}
+
+		if (!isspace(*p))
+			return -1;
+
+		p = skip_spaces(p);
+	}
+
+	if (arg < insn->args + 1)
+		return -1;
+
+	if (*p != '\0' & *p != '\n' && *p != '#' && *p != ';')
+		return -1;
+
+	return arg;
+}
+
+int assemble(u32 **out, const char *file)
+{
+	FILE *fp;
+	char *line;
+	ssize_t rd;
+	size_t n;
+	int outlen, outsize;
+
+	fp = fopen(file, "r");
+	if (!fp)
+		die("Cannot open file %s: %m", file);
+
+	outlen = 0;
+	outsize = 64;
+	*out = xmalloc(sizeof(u32) * outsize);
+
+	line = NULL;
+	n = 0;
+
+	while ((rd = getline(&line, &n, fp) != -1)) {
+		int res;
+
+		if (outlen + 6 > outsize) {
+			outsize *= 2;
+			*out = xrealloc(*out, sizeof(u32) * outsize);
+		}
+
+		res = assemble_insn(*out + outlen, line);
+		if (res < 0)
+			die("Error assembling file %s", file);
+
+		outlen += res;
+	}
+
+	*out = xrealloc(*out, sizeof(u32) * outlen);
+	fclose(fp);
+
+	return outlen;
 }
