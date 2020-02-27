@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 	}
 
 	fp = optind < argc ? xfopen(argv[optind], "r") : stdin;
-	res = assemble(&out, fp);
+	res = assemble(&out, fp, optind < argc ? argv[optind] : "<STDIN>");
 	fclose(fp);
 
 	for (i = 0; i < res; ++i)

@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 __attribute__((noreturn)) void die(const char *fmt, ...)
@@ -44,6 +45,22 @@ void *xrealloc(void *ptr, size_t sz)
 {
 	void *res = realloc(ptr, sz);
 	if (sz && !res)
+		die("Out of memory");
+	return res;
+}
+
+char *xstrdup(const char *s)
+{
+	char *res = strdup(s);
+	if (!res)
+		die("Out of memory");
+	return res;
+}
+
+char *xstrndup(const char *s, size_t n)
+{
+	char *res = strndup(s, n);
+	if (!res)
 		die("Out of memory");
 	return res;
 }

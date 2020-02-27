@@ -221,7 +221,7 @@ static struct insn *find_insn_by_name(const char *name, size_t len)
 	return NULL;
 }
 
-static void parse_op(u32 *op, const char **pp)
+static void parse_op(u32 *op, const char **pp, const char *file, int line)
 {
 	const char *p = *pp;
 
@@ -252,10 +252,10 @@ static void parse_op(u32 *op, const char **pp)
 
 	return;
 err:
-	die("Cannot parse operator near \"%s\"", *pp);
+	die("Cannot parse operator near \"%s\" (%s:%i)", *pp, file, line);
 }
 
-static void parse_label(u32 *lbl, const char **pp)
+static void parse_label(u32 *lbl, const char **pp, const char *file, int line)
 {
 	const char *p = *pp;
 
@@ -288,7 +288,7 @@ static void parse_label(u32 *lbl, const char **pp)
 
 	return;
 err:
-	die("Cannot parse label near \"%s\"", *pp);
+	die("Cannot parse label near \"%s\" (%s:%i)", *pp, file, line);
 }
 
 static const char *skip_spaces(const char *p)
@@ -298,7 +298,7 @@ static const char *skip_spaces(const char *p)
 	return p;
 }
 
-static int assemble_insn(u32 *out, const char *cmd, int line)
+static int assemble_insn(u32 *out, const char *cmd, const char *file, int line)
 {
 	const char *p = cmd;
 	struct insn *insn;
@@ -311,11 +311,11 @@ static int assemble_insn(u32 *out, const char *cmd, int line)
 
 	len = strspn(p, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_");
 	if (!len)
-		die("Unrecognized token in command \"%s\" (line %i)", cmd, line);
+		die("Unrecognized token in command \"%s\" (%s:%i)", cmd, file, line);
 
 	insn = find_insn_by_name(p, len);
 	if (!insn)
-		die("Unknown instruction \"%.*s\" (line %i)", (int)len, p, line);
+		die("Unknown instruction \"%.*s\" (%s:%i)", (int)len, p, file, line);
 
 	p += len;
 	p = skip_spaces(p);
@@ -327,17 +327,17 @@ static int assemble_insn(u32 *out, const char *cmd, int line)
 
 	for (arg = 1; arg < insn->args + 1; ++arg) {
 		if (insn->code == 24 || insn->code == 27) {
-			parse_label(&out[arg], &p);
+			parse_label(&out[arg], &p, file, line);
 		} else if ((insn->code == 25 || insn->code == 26) && (arg == 4 || arg == 5)) {
 			if (arg == 4)
-				parse_op(&out[arg], &p);
+				parse_op(&out[arg], &p, file, line);
 			if (arg == 5)
-				parse_label(&out[arg], &p);
+				parse_label(&out[arg], &p, file, line);
 		} else if ((p[0] == 'l' || p[0] == 'L') &&
 			   (p[1] == 'b' || p[1] == 'B') &&
 			   (p[2] == 'l' || p[2] == 'L')) {
 			p += 3;
-			parse_label(&out[arg], &p);
+			parse_label(&out[arg], &p, file, line);
 		} else {
 			char *end;
 			u64 x;
@@ -347,7 +347,7 @@ static int assemble_insn(u32 *out, const char *cmd, int line)
 
 			x = strtoull(p, &end, 0);
 			if (x > 0xffffffff)
-				die("Constant too big in command \"%s\" (line %i)", cmd, line);
+				die("Constant too big in command \"%s\" (%s:%i)", cmd, file, line);
 
 			out[arg] = x;
 			p = end;
@@ -359,26 +359,56 @@ static int assemble_insn(u32 *out, const char *cmd, int line)
 		}
 
 		if (!isspace(*p))
-			die("Unrecognized token in command \"%s\" (line %i)", cmd, line);
+			die("Unrecognized token in command \"%s\" (%s:%i)", cmd, file, line);
 
 		p = skip_spaces(p);
 	}
 
 	if (arg < insn->args + 1)
-		die("Too few arguments (%i < %i) in command \"%s\" (line %i)", arg - 1, insn->args, cmd, line);
+		die("Too few arguments (%i < %i) in command \"%s\" (%s:%i)", arg - 1, insn->args, cmd, file, line);
 
 	if (*p != '\0' & *p != '\n')
-		die("Unrecognized token in command \"%s\" (line %i)", cmd, line);
+		die("Unrecognized token in command \"%s\" (%s:%i)", cmd, file, line);
 
 	return arg;
 }
 
-int assemble(u32 **out, FILE *fp)
+static int parse_src_pos(const char *p, char **cur_file, int *line)
 {
-	char *line;
+	long num;
+	char *end;
+
+	if (p[0] != '#' || p[1] != ' ')
+		return -1;
+
+	p += 2;
+	num = strtol(p, &end, 10);
+
+	if (p == end || *end != ' ')
+		return -1;
+
+	p = end + 1;
+	if (*p != '"')
+		return -1;
+
+	++p;
+	end = strchr(p, '"');
+	if (!end)
+		return -1;
+
+	free(*cur_file);
+	*cur_file = xstrndup(p, end - p);
+	*line = num;
+
+	return 0;
+}
+
+int assemble(u32 **out, FILE *fp, const char *file)
+{
+	int outlen, outsize, linenum;
+	char *line, *cur_file;
 	ssize_t rd;
 	size_t n;
-	int outlen, outsize, linenum;
 
 	outlen = 0;
 	outsize = 64;
@@ -386,22 +416,20 @@ int assemble(u32 **out, FILE *fp)
 
 	line = NULL;
 	n = 0;
-	linenum = 0;
+	cur_file = xstrdup(file);
+	linenum = 1;
 
 	while ((rd = getline(&line, &n, fp) != -1)) {
 		/* one line can contain multiple commands, separated by & */
-		char *cmd, *comment;
+		char *cmd, *semicolon;
 
-		++linenum;
+		if (!parse_src_pos(line, &cur_file, &linenum))
+			continue;
 
 		/* ignore comments */
-		comment = strchr(line, ';');
-		if (comment)
-			*comment = '\0';
-
-		comment = strchr(line, '#');
-		if (comment)
-			*comment = '\0';
+		semicolon = strchr(line, ';');
+		if (semicolon)
+			*semicolon = '\0';
 
 		for (cmd = strtok(line, "&"); cmd; cmd = strtok(NULL, "&")) {
 			int res;
@@ -411,10 +439,14 @@ int assemble(u32 **out, FILE *fp)
 				*out = xrealloc(*out, sizeof(u32) * outsize);
 			}
 
-			res = assemble_insn(*out + outlen, cmd, linenum);
+			res = assemble_insn(*out + outlen, cmd, cur_file, linenum);
 			outlen += res;
 		}
+
+		++linenum;
 	}
+
+	free(cur_file);
 
 	*out = xrealloc(*out, sizeof(u32) * outlen);
 	return outlen;
