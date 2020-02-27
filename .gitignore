@@ -3,6 +3,7 @@
 *.key
 *.patch
 bin2c
+gppc
 mox-imager
 uart-images
 wtmi.c
