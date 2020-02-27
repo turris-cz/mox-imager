@@ -298,24 +298,24 @@ static const char *skip_spaces(const char *p)
 	return p;
 }
 
-static int assemble_insn(u32 *out, const char *line)
+static int assemble_insn(u32 *out, const char *cmd, int line)
 {
-	const char *p = line;
+	const char *p = cmd;
 	struct insn *insn;
 	int arg;
 	size_t len;
 
 	p = skip_spaces(p);
-	if (*p == '\0' || *p == '\n' || *p == ';' || *p == '#')
+	if (*p == '\0' || *p == '\n')
 		return 0;
 
 	len = strspn(p, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_");
 	if (!len)
-		die("Unrecognized token on line \"%s\"", line);
+		die("Unrecognized token in command \"%s\" (line %i)", cmd, line);
 
 	insn = find_insn_by_name(p, len);
 	if (!insn)
-		die("Unknown instruction \"%.*s\"", (int)len, p);
+		die("Unknown instruction \"%.*s\" (line %i)", (int)len, p, line);
 
 	p += len;
 	p = skip_spaces(p);
@@ -347,28 +347,28 @@ static int assemble_insn(u32 *out, const char *line)
 
 			x = strtoull(p, &end, 0);
 			if (x > 0xffffffff)
-				die("Constant too big on line \"%s\"", line);
+				die("Constant too big in command \"%s\" (line %i)", cmd, line);
 
 			out[arg] = x;
 			p = end;
 		}
 
-		if (*p == '\0' || *p == '\n' || *p == '#' || *p == ';') {
+		if (*p == '\0' || *p == '\n') {
 			++arg;
 			break;
 		}
 
 		if (!isspace(*p))
-			die("Unrecognized token on line \"%s\"", line);
+			die("Unrecognized token in command \"%s\" (line %i)", cmd, line);
 
 		p = skip_spaces(p);
 	}
 
 	if (arg < insn->args + 1)
-		die("Too few arguments (%i < %i) on line \"%s\"", arg - 1, insn->args, line);
+		die("Too few arguments (%i < %i) in command \"%s\" (line %i)", arg - 1, insn->args, cmd, line);
 
-	if (*p != '\0' & *p != '\n' && *p != '#' && *p != ';')
-		die("Unrecognized token on line \"%s\"", line);
+	if (*p != '\0' & *p != '\n')
+		die("Unrecognized token in command \"%s\" (line %i)", cmd, line);
 
 	return arg;
 }
@@ -378,7 +378,7 @@ int assemble(u32 **out, FILE *fp)
 	char *line;
 	ssize_t rd;
 	size_t n;
-	int outlen, outsize;
+	int outlen, outsize, linenum;
 
 	outlen = 0;
 	outsize = 64;
@@ -386,17 +386,34 @@ int assemble(u32 **out, FILE *fp)
 
 	line = NULL;
 	n = 0;
+	linenum = 0;
 
 	while ((rd = getline(&line, &n, fp) != -1)) {
-		int res;
+		/* one line can contain multiple commands, separated by & */
+		char *cmd, *comment;
 
-		if (outlen + 6 > outsize) {
-			outsize *= 2;
-			*out = xrealloc(*out, sizeof(u32) * outsize);
+		++linenum;
+
+		/* ignore comments */
+		comment = strchr(line, ';');
+		if (comment)
+			*comment = '\0';
+
+		comment = strchr(line, '#');
+		if (comment)
+			*comment = '\0';
+
+		for (cmd = strtok(line, "&"); cmd; cmd = strtok(NULL, "&")) {
+			int res;
+
+			if (outlen + 6 > outsize) {
+				outsize *= 2;
+				*out = xrealloc(*out, sizeof(u32) * outsize);
+			}
+
+			res = assemble_insn(*out + outlen, cmd, linenum);
+			outlen += res;
 		}
-
-		res = assemble_insn(*out + outlen, line);
-		outlen += res;
 	}
 
 	*out = xrealloc(*out, sizeof(u32) * outlen);
