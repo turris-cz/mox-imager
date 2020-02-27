@@ -289,7 +289,7 @@ static inline int tim_is_trusted(const image_t *tim)
 extern void tim_image_set_loadaddr(image_t *tim, u32 id, u32 loadaddr);
 extern u32 tim_imap_pkg_addr(image_t *tim, u32 id);
 extern void tim_imap_pkg_addr_set(image_t *tim, u32 id, u32 flashentry, u32 partition);
-extern void tim_parse(image_t *tim, int *numimagesp);
+extern void tim_parse(image_t *tim, int *numimagesp, int disasm);
 extern void tim_enable_hash(image_t *tim, u32 id, int enable);
 extern void tim_rehash(image_t *tim);
 extern void tim_get_otp_hash(image_t *tim, u32 *hash);

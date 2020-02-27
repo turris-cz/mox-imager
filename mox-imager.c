@@ -31,6 +31,8 @@
 #define MOX_U_BOOT_OFFSET	0x20000
 #define MOX_ENV_OFFSET		0x180000
 
+static int gpp_disassemble;
+
 struct mox_builder_data {
 	u32 op;
 	u32 serial_number_low;
@@ -156,7 +158,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	tim_image_set_loadaddr(timh, TIMH_ID, timh_loadaddr);
 	tim_add_key(timh, name2id("CSK0"), key);
 	tim_sign(timh, key);
-	tim_parse(timh, NULL);
+	tim_parse(timh, NULL, gpp_disassemble);
 
 	memcpy(buf, timh->data, timh->size);
 
@@ -168,7 +170,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
 		      partition, 0);
 	tim_sign(timn, key);
-	tim_parse(timn, NULL);
+	tim_parse(timn, NULL, gpp_disassemble);
 
 	memcpy(buf + MOX_TIMN_OFFSET, timn->data, timn->size);
 	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
@@ -211,7 +213,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 		      partition, 0);
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
-	tim_parse(timh, NULL);
+	tim_parse(timh, NULL, gpp_disassemble);
 
 	memcpy(buf, timh->data, timh->size);
 	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
@@ -287,7 +289,7 @@ static void do_get_otp_hash(u32 *hash)
 
 	tim = image_find(TIMH_ID);
 	/* check if the TIM is correct by parsing it */
-	tim_parse(tim, NULL);
+	tim_parse(tim, NULL, gpp_disassemble);
 	tim_get_otp_hash(tim, hash);
 }
 
@@ -363,6 +365,7 @@ static void help(void)
 		"  -s, --sign                                  sign TIM image with ECDSA-521 private key\n"
 		"      --create-trusted-image=SPI/UART/EMMC    create secure image for SPI / UART (private key required)\n"
 		"      --create-untrusted-image=SPI/UART/EMMC  create untrusted secure image (no private key required)\n"
+		"  -S  --disassemble                           disassemble GPP code when parsing TIM\n"
 		"      --get-otp-hash                          print OTP hash of given secure firmware image\n"
 		"  -u, --hash-u-boot                           save OBMI (U-Boot) image hash to TIM\n"
 		"  -n, --no-u-boot                             remove OBMI (U-Boot) image from TIM\n"
@@ -381,7 +384,7 @@ static const struct option long_options[] = {
 	{ "random-seed",		required_argument,	0,	'r' },
 	{ "otp-read",			no_argument,		0,	'R' },
 	{ "deploy",			no_argument,		0,	'd' },
-	{ "serial-number",		required_argument,	0,	'S' },
+	{ "serial-number",		required_argument,	0,	'N' },
 	{ "mac-address",		required_argument,	0,	'M' },
 	{ "board-version",		required_argument,	0,	'B' },
 	{ "otp-hash",			required_argument,	0,	'H' },
@@ -389,6 +392,7 @@ static const struct option long_options[] = {
 	{ "sign",			no_argument,		0,	's' },
 	{ "create-trusted-image",	required_argument,	0,	'c' },
 	{ "create-untrusted-image",	required_argument,	0,	'C' },
+	{ "disassemble",		no_argument,		0,	'S' },
 	{ "get-otp-hash",		no_argument,		0,	'G' },
 	{ "hash-u-boot",		no_argument,		0,	'u' },
 	{ "no-u-boot",			no_argument,		0,	'n' },
@@ -417,7 +421,7 @@ int main(int argc, char **argv)
 		int optidx;
 		char c;
 
-		c = getopt_long(argc, argv, "D:bF:Eo:k:r:Rdg:sunh", long_options,
+		c = getopt_long(argc, argv, "D:bF:Eo:k:r:Rdg:sSunh", long_options,
 				NULL);
 		if (c == -1)
 			break;
@@ -460,7 +464,7 @@ int main(int argc, char **argv)
 		case 'd':
 			deploy = 1;
 			break;
-		case 'S':
+		case 'N':
 			if (serial_number)
 				die("Serial number already given");
 			serial_number = optarg;
@@ -502,6 +506,9 @@ int main(int argc, char **argv)
 				create_trusted_image = 1;
 			else
 				create_untrusted_image = 1;
+			break;
+		case 'S':
+			gpp_disassemble = 1;
 			break;
 		case 'G':
 			get_otp_hash = 1;
@@ -624,9 +631,9 @@ int main(int argc, char **argv)
 			tim_rehash(timh);
 		}
 
-		tim_parse(timh, &nimages);
+		tim_parse(timh, &nimages, gpp_disassemble);
 		if (timn)
-			tim_parse(timn, &nimages_timn);
+			tim_parse(timn, &nimages_timn, gpp_disassemble);
 
 		if (!trusted)
 			tim_enable_hash(timh, OBMI_ID, hash_u_boot);

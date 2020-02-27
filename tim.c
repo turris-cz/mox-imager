@@ -343,7 +343,7 @@ void tim_minimal_image(image_t *tim, int secure)
 	}
 }
 
-void tim_parse(image_t *tim, int *numimagesp)
+void tim_parse(image_t *tim, int *numimagesp, int disasm)
 {
 	static const u32 zerohash[16];
 	timhdr_t *timhdr;
@@ -445,8 +445,10 @@ void tim_parse(image_t *tim, int *numimagesp)
 				++op;
 			}
 
-			printf("    Instructions:\n");
-			disassemble("\t", (void *)op, pkg->size / 4 - 4 - 2 * nops);
+			if (disasm) {
+				printf("    Instructions:\n");
+				disassemble("\t", (void *)op, pkg->size / 4 - 4 - 2 * nops);
+			}
 		}
 	}
 
