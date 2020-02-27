@@ -884,6 +884,7 @@ void tim_get_otp_hash(image_t *tim, u32 *hash)
 
 void tim_sign(image_t *tim, EC_KEY *key)
 {
+	const BIGNUM *sigr, *sigs;
 	ECDSA_SIG *sig;
 	timhdr_t *timhdr;
 	platds_t *platds;
@@ -914,6 +915,7 @@ void tim_sign(image_t *tim, EC_KEY *key)
 	if (!sig)
 		die("Could not sign");
 
-	bn2tim(sig->r, platds->ECDSA.sig.r, 17);
-	bn2tim(sig->s, platds->ECDSA.sig.s, 17);
+	ECDSA_SIG_get0(sig, &sigr, &sigs);
+	bn2tim(sigr, platds->ECDSA.sig.r, 17);
+	bn2tim(sigs, platds->ECDSA.sig.s, 17);
 }

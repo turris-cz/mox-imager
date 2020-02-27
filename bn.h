@@ -10,7 +10,7 @@
 #include "utils.h"
 
 extern void bn2tim(const BIGNUM *bn, u32 *data, int len);
-extern void tim2bn(u32 *data, int len, BIGNUM *bn);
-extern void prbn(BIGNUM *bn);
+extern void tim2bn(const u32 *data, int len, BIGNUM *bn);
+extern void prbn(const BIGNUM *bn);
 
 #endif /* _BN_H_ */
