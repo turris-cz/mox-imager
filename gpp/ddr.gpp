@@ -7,11 +7,15 @@ DEFRET(R__1)
 DEFRET(R__2)
 DEFRET(R__3)
 DEFRET(R__4)
+DEFRET(R__5)
+DEFRET(R__6)
+DEFRET(R__7)
 BRANCH END
 
 #include "ddr_test.gpp.inc"
 #include "ddr3.gpp.inc"
 #include "ddr4.gpp.inc"
+#include "efuse.gpp.inc"
 
 #define branch_if_addrs_dont_mask(addr1,addr2,label)	\
 	WRITE addr1 0x0000AAAA				\
@@ -24,20 +28,72 @@ BRANCH END
 
 LABEL STRT
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; set DDR mode according to OTP (if not present or error reading, try both modes ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; read ECC row 42
+LOAD_SM_VAL SM0 42
+LOAD_SM_VAL SM1 39
+LOAD_SM_VAL SM2 7
+CALL(eFus, R__1)
+
+; if not read correctly, try both DDR modes
+TEST_SM_AND_BRANCH SM0 0xffffffff 0 != BOTH
+; if row is not locked, try both DDR modes
+TEST_SM_AND_BRANCH SM1 0xffffffff 1 != BOTH
+
+; store high word in SM14 (DDR training code may use low SMs)
+MOV_SM_SM SM14 SM3
+; if burned board version is >= 30, do DDR4 training, otherwise DDR3
+TEST_SM_AND_BRANCH SM14 0x00ff0000 0x001e0000 >= do4
+
+; do DDR3 training
+CALL(DDR3, R__2)
+; if burned RAM size is 512 MB, end
+TEST_SM_AND_BRANCH SM14 0x01000000 0x01000000 != END
+; else set 1024 MB (DDR3 board don't support more)
+WRITE 0xC0000200 0x000E0001
+DELAY 1
+BRANCH END
+
+; do DDR4 traning
+LABEL do4
+CALL(DDR4, R__3)
+; if burned RAM size is less then 4 GB, skip setting 4 GB, otherwise set 4 GB and end
+TEST_SM_AND_BRANCH SM14 0x03000000 0x03000000 < skp4
+WRITE 0xC0000200 0x00100001
+WRITE 0xC0000220 0x16021739
+DELAY 1
+BRANCH END
+LABEL skp4
+; if burned RAM size is less then 2 GB, end, otherwise set 2 GB and end
+TEST_SM_AND_BRANCH SM14 0x03000000 0x02000000 < END
+WRITE 0xC0000200 0x000F0001
+WRITE 0xC0000220 0x05020639
+DELAY 1
+BRANCH END
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; try both DDR modes (first DDR3, then DDR4) ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+LABEL BOTH
+
 ; first try to initialize in DDR3 mode
-CALL(DDR3, R__1)
+CALL(DDR3, R__4)
 
 ; test if we see RAM contents in DDR3 mode
-CALL(TEST, R__2)
+CALL(TEST, R__5)
 
 ; if yes, try finding RAM size for DDR3
 TEST_SM_AND_BRANCH SM0 1 1 == SIZ3
 
 ; else try DDR4 mode
-CALL(DDR4, R__3)
+CALL(DDR4, R__6)
 
 ; test if we see RAM contents in DDR4 mode
-CALL(TEST, R__4)
+CALL(TEST, R__7)
 
 ; if not, something is very wrong
 TEST_SM_AND_BRANCH SM0 1 1 != END
