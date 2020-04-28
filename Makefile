@@ -23,18 +23,18 @@ GPPS_DEPS = $(patsubst %.c,%.d,$(GPPS))
 all: mox-imager
 
 clean:
-	rm -f mox-imager $(OBJS) bin2c gppc bin2c.o wtmi.c $(GPPS) $(patsubst %.c,%.gpp.bin,$(GPPS)) $(patsubst %.c,%.gpp.pre,$(GPPS)) $(DEPS) $(GPPS_DEPS)
+	rm -f mox-imager $(OBJS) bin2c gppc bin2c.o $(GPPS) $(patsubst %.c,%.gpp.bin,$(GPPS)) $(patsubst %.c,%.gpp.pre,$(GPPS)) $(DEPS) $(GPPS_DEPS)
 
 mox-imager: $(OBJS)
 	$(CC) $(CFLAGS) -o mox-imager $(OBJS) $(LDFLAGS)
 
-mox-imager.c: wtmi.c
-	touch mox-imager.c
-
 tim.c: $(GPPS)
 
-wtmi.c: $(WTMI_PATH)/wtmi.bin bin2c
+refresh-wtmi: bin2c
+	make -C $(WTMI_PATH) clean
+	make -C $(WTMI_PATH) DEPLOY=1 LTO=1
 	./bin2c wtmi_data <$(WTMI_PATH)/wtmi.bin >wtmi.c
+	git commit -sm "Refresh wtmi.c" wtmi.c
 
 bin2c: bin2c.o
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
@@ -67,11 +67,6 @@ tim.c: $(GPPS)
 
 %.o: %.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
-
-.PHONY: wtmi.bin
-
-$(WTMI_PATH)/wtmi.bin:
-	make -C $(WTMI_PATH) DEPLOY=1
 
 ifneq ($(MAKECMDGOALS), clean)
 -include $(DEPS) $(GPPS_DEPS)
