@@ -4,7 +4,12 @@ WTMI_PATH := ../wtmi
 
 CC := gcc
 CFLAGS := -O2
-LDFLAGS := -lm -lcrypto
+ifeq ($(STATIC_LIBCRYPTO), 1)
+	LDFLAGS_LIBCRYPTO := -l:libcrypto.a -pthread
+else
+	LDFLAGS_LIBCRYPTO := -lcrypto
+endif
+LDFLAGS := -lm $(LDFLAGS_LIBCRYPTO)
 
 SRCS = $(filter-out gppc.c bin2c.c wtmi.c,$(wildcard *.c))
 DEPS = $(patsubst %.c,%.d,$(SRCS))
