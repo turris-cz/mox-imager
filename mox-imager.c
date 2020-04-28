@@ -661,9 +661,11 @@ int main(int argc, char **argv)
 		int i, nimages_all;
 
 		if (fdstr)
-			setwtp(fdstr, send_escape);
+			setwtpfd(fdstr);
 		else
-			openwtp(tty, send_escape, higher_baudrate);
+			openwtp(tty);
+
+		initwtp(send_escape, higher_baudrate);
 
 		nimages_all = nimages;
 		if (timn)

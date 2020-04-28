@@ -88,11 +88,22 @@ static void raw_escape_seq(void)
 		die("Escape sequence failed!");
 }
 
-static void escape_seq(void)
+static void start_wtp(void)
+{
+	u8 buf[5];
+
+	xwrite("wtp\r", 4);
+	xread(buf, 5);
+	if (memcmp(buf, "wtp\r\n", 5))
+		die("Wrong reply: \"%.*s\"", 5, buf);
+}
+
+static int escape_seq(void)
 {
 	size_t tot = 0;
-	ssize_t rd;
+	ssize_t rd, i;
 	u8 buf[512];
+	int prompt = 0;
 
 	printf("Sending escape sequence, you have cca 5-10 seconds to power up MOX\n\n");
 
@@ -105,20 +116,19 @@ static void escape_seq(void)
 		rd = read(wtpfd, buf, 512);
 		if (rd < 0)
 			die("Cannot read: %m\n");
+
 		if (!rd)
 			break;
+
+		for (i = 0; i < rd; ++i)
+			if (buf[i] == '>')
+				prompt = 1;
+
 		tot += rd;
+
 	}
-}
 
-static void initwtp(void)
-{
-	u8 buf[5];
-
-	xwrite("wtp\r", 4);
-	xread(buf, 5);
-	if (memcmp(buf, "wtp\r\n", 5))
-		die("Wrong reply: \"%.*s\"", 5, buf);
+	return prompt;
 }
 
 static inline int tcdrain(int fd)
@@ -131,7 +141,36 @@ static inline int tcflush(int fd, int q)
 	return ioctl(fd, TCFLSH, q);
 }
 
-static void do_open(const char *path, int higher_baudrate)
+static void change_to_higher_baudrate(void)
+{
+	const char *cmd = "w c0012014 0f0f0f0f\r";
+	struct termios2 opts;
+
+	xwrite(cmd, strlen(cmd));
+	tcdrain(wtpfd);
+	usleep(10000);
+	tcflush(wtpfd, TCIFLUSH);
+
+	memset(&opts, 0, sizeof(opts));
+	ioctl(wtpfd, TCGETS2, &opts);
+	opts.c_cflag &= ~CBAUD;
+	opts.c_cflag |= BOTHER;
+	opts.c_ispeed = opts.c_ospeed = 230400;
+	ioctl(wtpfd, TCSETS2, &opts);
+	usleep(10000);
+	tcflush(wtpfd, TCIFLUSH);
+}
+
+void setwtpfd(const char *fdstr)
+{
+	char *end;
+
+	wtpfd = strtol(fdstr, &end, 10);
+	if (*end || wtpfd < 0)
+		die("Wrong file descriptor %s", fdstr);
+}
+
+void openwtp(const char *path)
 {
 	struct termios2 opts;
 
@@ -153,45 +192,20 @@ static void do_open(const char *path, int higher_baudrate)
 	opts.c_cflag |= CS8 | CREAD | CLOCAL;
 	ioctl(wtpfd, TCSETS2, &opts);
 	tcflush(wtpfd, TCIFLUSH);
+}
 
-	if (higher_baudrate) {
-		const char *cmd = "w c0012014 0f0f0f0f\r";
+void initwtp(int send_escape, int higher_baudrate)
+{
+	int prompt = 1;
 
-		xwrite(cmd, strlen(cmd));
-		tcdrain(wtpfd);
-		usleep(10000);
-		tcflush(wtpfd, TCIFLUSH);
-		opts.c_cflag &= ~CBAUD;
-		opts.c_cflag |= BOTHER;
-		opts.c_ispeed = opts.c_ospeed = 230400;
-		ioctl(wtpfd, TCSETS2, &opts);
-		usleep(10000);
-		tcflush(wtpfd, TCIFLUSH);
+	if (send_escape)
+		prompt = escape_seq();
+
+	if (prompt) {
+		if (higher_baudrate)
+			change_to_higher_baudrate();
+		start_wtp();
 	}
-}
-
-void setwtp(const char *fdstr, int send_escape)
-{
-	char *end;
-
-	wtpfd = strtol(fdstr, &end, 10);
-	if (*end || wtpfd < 0)
-		die("Wrong file descriptor %s", fdstr);
-
-	if (send_escape)
-		escape_seq();
-	else
-		initwtp();
-}
-
-void openwtp(const char *path, int send_escape, int higher_baudrate)
-{
-	do_open(path, higher_baudrate);
-
-	if (send_escape)
-		escape_seq();
-	else
-		initwtp();
 }
 
 void closewtp(void)

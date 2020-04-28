@@ -19,8 +19,9 @@ typedef struct {
 	u8 data[255];
 } resp_t;
 
-extern void setwtp(const char *fdstr, int send_escape);
-extern void openwtp(const char *path, int send_escape, int higher_baudrate);
+extern void setwtpfd(const char *fdstr);
+extern void openwtp(const char *path);
+extern void initwtp(int send_escape, int higher_baudrate);
 extern void closewtp(void);
 extern u32 selectimage(void);
 extern void sendimage(image_t *img, int fast);
