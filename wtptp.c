@@ -100,7 +100,6 @@ static void start_wtp(void)
 
 static int escape_seq(void)
 {
-	size_t tot = 0;
 	ssize_t rd, i;
 	u8 buf[512];
 	int prompt = 0;
@@ -123,9 +122,6 @@ static int escape_seq(void)
 		for (i = 0; i < rd; ++i)
 			if (buf[i] == '>')
 				prompt = 1;
-
-		tot += rd;
-
 	}
 
 	return prompt;
