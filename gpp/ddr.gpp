@@ -46,7 +46,7 @@ TEST_SM_AND_BRANCH SM1 0xffffffff 1 != BOTH
 ; store high word in SM14 (DDR training code may use low SMs)
 MOV_SM_SM SM14 SM3
 ; if burned board version is >= 30, do DDR4 training, otherwise DDR3
-TEST_SM_AND_BRANCH SM14 0x00ff0000 0x001e0000 >= do4
+TEST_SM_AND_BRANCH SM14 0x007f0000 0x001e0000 >= do4
 
 ; do DDR3 training
 CALL(DDR3, R__2)
