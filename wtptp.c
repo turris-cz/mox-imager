@@ -472,10 +472,10 @@ void uart_deploy(void)
 	int ram;
 
 	eccread(buf, 4);
-	if (memcmp(buf, "RAM", 3) || (buf[3] != '0' && buf[3] != '1'))
+	if (memcmp(buf, "RAM", 3) || buf[3] < '0' || buf[3] > '3')
 		goto wrong;
 
-	ram = buf[3] == '1' ? 1024 : 512;
+	ram = 512 << (buf[3] - '0');
 
 	printf("\n");
 	printf("Found %i MiB RAM\n", ram);
