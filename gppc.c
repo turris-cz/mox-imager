@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Beerware
+/*
+ * 2020 by Marek Behun <marek.behun@nic.cz>
+ */
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
