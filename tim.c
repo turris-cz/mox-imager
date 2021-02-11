@@ -22,7 +22,7 @@ static void tim_add_gpp_pkg(image_t *tim, const char *name, void *code,
 			    size_t codesize, int init_ddr,
 			    int enable_memtest, u32 memtest_start,
 			    u32 memtest_size, int init_attempts,
-			    int ignore_timeouts_op, int iignore_timeouts_val);
+			    int ignore_timeouts_op, int ignore_timeouts_val);
 
 static reshdr_t *reserved_area(timhdr_t *timhdr)
 {
