@@ -545,6 +545,36 @@ void tim_enable_hash(image_t *tim, u32 id, int enable)
 	}
 }
 
+static u32 tim_issuedate_now(void)
+{
+	struct tm *tm;
+	time_t now;
+	u32 res;
+
+	now = time(NULL);
+	tm = gmtime(&now);
+	tm->tm_mon += 1;
+	tm->tm_year += 1900;
+
+	res = (tm->tm_mday / 10) % 10;
+	res <<= 4;
+	res |= tm->tm_mday % 10;
+	res <<= 4;
+	res |= (tm->tm_mon / 10) % 10;
+	res <<= 4;
+	res |= tm->tm_mon % 10;
+	res <<= 4;
+	res |= (tm->tm_year / 1000) % 10;
+	res <<= 4;
+	res |= (tm->tm_year / 100) % 10;
+	res <<= 4;
+	res |= (tm->tm_year / 10) % 10;
+	res <<= 4;
+	res |= tm->tm_year % 10;
+
+	return htole32(res);
+}
+
 void tim_rehash(image_t *tim)
 {
 	timhdr_t *timhdr;
@@ -554,6 +584,7 @@ void tim_rehash(image_t *tim)
 
 	timhdr = (void *) tim->data;
 	sizetohash = getsizetohash(timhdr);
+	timhdr->issuedate = tim_issuedate_now();
 
 	for (i = 0; i < tim_nimages(timhdr); ++i) {
 		image_t *image;
