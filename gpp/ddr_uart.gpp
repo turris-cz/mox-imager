@@ -1,0 +1,2 @@
+#define SUPPORT_UART_BAUDRATE_CHANGE
+#include "ddr.gpp"

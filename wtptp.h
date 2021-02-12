@@ -21,8 +21,9 @@ typedef struct {
 
 extern void setwtpfd(const char *fdstr);
 extern void openwtp(const char *path);
-extern void initwtp(int send_escape, int higher_baudrate);
+extern void initwtp(int send_escape);
 extern void closewtp(void);
+extern void try_change_baudrate(int baudrate);
 extern u32 selectimage(void);
 extern void sendimage(image_t *img, int fast);
 extern void uart_otp_read(void);

@@ -137,26 +137,6 @@ static inline int tcflush(int fd, int q)
 	return ioctl(fd, TCFLSH, q);
 }
 
-static void change_to_higher_baudrate(void)
-{
-	const char *cmd = "w c0012014 0f0f0f0f\r";
-	struct termios2 opts;
-
-	xwrite(cmd, strlen(cmd));
-	tcdrain(wtpfd);
-	usleep(10000);
-	tcflush(wtpfd, TCIFLUSH);
-
-	memset(&opts, 0, sizeof(opts));
-	ioctl(wtpfd, TCGETS2, &opts);
-	opts.c_cflag &= ~CBAUD;
-	opts.c_cflag |= BOTHER;
-	opts.c_ispeed = opts.c_ospeed = 230400;
-	ioctl(wtpfd, TCSETS2, &opts);
-	usleep(10000);
-	tcflush(wtpfd, TCIFLUSH);
-}
-
 void setwtpfd(const char *fdstr)
 {
 	char *end;
@@ -190,23 +170,127 @@ void openwtp(const char *path)
 	tcflush(wtpfd, TCIFLUSH);
 }
 
-void initwtp(int send_escape, int higher_baudrate)
+void initwtp(int send_escape)
 {
 	int prompt = 1;
 
 	if (send_escape)
 		prompt = escape_seq();
 
-	if (prompt) {
-		if (higher_baudrate)
-			change_to_higher_baudrate();
+	if (prompt)
 		start_wtp();
-	}
 }
 
 void closewtp(void)
 {
 	close(wtpfd);
+}
+
+static int compute_tbg_freq(int xtal, int fbdiv, int refdiv, int vcodiv_sel)
+{
+	if (!refdiv)
+		refdiv = 1;
+
+	return 1000000 * (u64)xtal * (fbdiv << 2) / (refdiv * (1 << vcodiv_sel));
+}
+
+static int compute_best_uart_params(int clk, int desired_baud, u32 *div, u32 *m)
+{
+	u8 m1, m2, m3, m4, best_m1, best_m2, best_m3, best_m4;
+	double t, ideal_t, err, best_err = 1.0;
+	int d, d_max, best_d;
+	_Bool eq, best_eq;
+
+	ideal_t = 10.0 / desired_baud;
+
+	d_max = clk / (desired_baud * 16);
+	if (d_max > 1023)
+		d_max = 1023;
+
+	for (d = 2; d <= d_max; ++d) {
+		u8 lo, hi;
+
+		m1 = clk / (desired_baud * d);
+		if (m1 < 2 || m1 > 63)
+			continue;
+
+		lo = m1 == 2 ? 2 : m1 - 1;
+		hi = m1 == 63 ? 63 : m1 + 1;
+
+		for (m2 = lo; m2 <= hi; ++m2) {
+			for (m3 = lo; m3 <= hi; ++m3) {
+				if (abs(m2 - m3) > 1)
+					continue;
+				for (m4 = lo; m4 <= hi; ++m4) {
+					if (abs(m3 - m4) > 1)
+						continue;
+					t = (3 * (m1 + m2) + 2 * (m3 + m4)) * d / (double)clk;
+					err = __builtin_fabs(t / ideal_t - 1.0);
+					eq = (m1 == m2 && m2 == m3 && m3 == m4);
+					if (err < best_err || (err == best_err && eq && !best_eq)) {
+						best_err = err;
+						best_d = d;
+						best_m1 = m1;
+						best_m2 = m2;
+						best_m3 = m3;
+						best_m4 = m4;
+						best_eq = eq;
+					}
+				}
+			}
+		}
+	}
+
+	if (best_err == 1.0)
+		return -1;
+
+	*div = best_d;
+	*m = (best_m4 << 24) | (best_m3 << 16) | (best_m2 << 8) | best_m1;
+
+	return 0;
+}
+
+void try_change_baudrate(int baudrate)
+{
+	struct termios2 opts;
+	int tbg_freq;
+	u32 div, m;
+	u8 buf[6] = "baud";
+
+	printf("Requesting baudrate change to %i baud\n", baudrate);
+
+	/*
+	 * Wait 100ms to make sure we send the "baud" command only after BootROM
+	 * verified the TIM and is in execution of the GPP program.
+	 */
+	usleep(100000);
+
+	xwrite(buf, 4);
+	xread(buf, 5);
+
+	tbg_freq = compute_tbg_freq(buf[0], buf[1],
+				    ((buf[3] & 1) << 8) | buf[2], buf[4]);
+
+	if (compute_best_uart_params(tbg_freq, baudrate, &div, &m))
+		die("Failed computing A3720 UART parameters for baudrate %i!\n",
+		    baudrate);
+
+	*(u16 *)&buf[0] = htole16(div);
+	*(u32 *)&buf[2] = htole32(m);
+
+	xwrite(buf, 6);
+	usleep(300000);
+
+	memset(&opts, 0, sizeof(opts));
+	ioctl(wtpfd, TCGETS2, &opts);
+	opts.c_cflag &= ~CBAUD;
+	opts.c_cflag |= BOTHER;
+	opts.c_ispeed = opts.c_ospeed = baudrate;
+	ioctl(wtpfd, TCSETS2, &opts);
+	usleep(10000);
+	tcflush(wtpfd, TCIFLUSH);
+
+	ioctl(wtpfd, TCGETS2, &opts);
 }
 
 static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)

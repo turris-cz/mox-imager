@@ -3,6 +3,7 @@
  * 2018 by Marek Behun <marek.behun@nic.cz>
  */
 
+#define _GNU_SOURCE
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -297,18 +298,21 @@ const size_t minimal_tim_size = 200;
 #include "gpp/gpp1_trusted.c"
 #include "gpp/gpp2.c"
 #include "gpp/ddr.c"
+#include "gpp/ddr_uart.c"
 
-void tim_minimal_image(image_t *tim, int secure)
+void tim_minimal_image(image_t *tim, int trusted, u32 id, int support_fastmode)
 {
 	void *data, *from;
 	u32 size;
 
-	if (secure == 2) {
-		from = minimal_secure_timn;
-		size = minimal_secure_timn_size;
-	} else if (secure == 1) {
-		from = minimal_secure_tim;
-		size = minimal_secure_tim_size;
+	if (trusted) {
+		if (id == TIMN_ID) {
+			from = minimal_secure_timn;
+			size = minimal_secure_timn_size;
+		} else {
+			from = minimal_secure_tim;
+			size = minimal_secure_tim_size;
+		}
 	} else {
 		from = minimal_tim;
 		size = minimal_tim_size;
@@ -324,26 +328,31 @@ void tim_minimal_image(image_t *tim, int secure)
 	tim->data = data;
 	tim->size = size;
 
-	if (secure == 2) {
-		tim_add_cidp_pkg(tim, "TBRI", 3, "GPP1", "GPP2", "DDR3");
+	if (trusted && id != TIMN_ID)
+		return;
+
+	tim_add_cidp_pkg(tim, "TBRI", 3, "GPP1", "GPP2", "DDR3");
+
+	if (trusted)
 		tim_add_gpp_pkg(tim, "GPP1", GPP_gpp1_trusted,
 				GPP_gpp1_trusted_size, 0, 0, 0, 0, 0, 1, 0);
-		tim_add_gpp_pkg(tim, "GPP2", GPP_gpp2, GPP_gpp2_size,
-				0, 0, 0, 0, 0, 1, 0);
-		tim_add_gpp_pkg(tim, "DDR3", GPP_ddr, GPP_ddr_size,
-				1, 0, 0, 0, 0, 0, 0);
-	} else if (secure == 0) {
-		tim_add_cidp_pkg(tim, "TBRI", 3, "GPP1", "GPP2", "DDR3");
+	else
 		tim_add_gpp_pkg(tim, "GPP1", GPP_gpp1, GPP_gpp1_size,
 				0, 0, 0, 0, 0, 1, 0);
-		tim_add_gpp_pkg(tim, "GPP2", GPP_gpp2, GPP_gpp2_size,
-				0, 0, 0, 0, 0, 1, 0);
+
+	tim_add_gpp_pkg(tim, "GPP2", GPP_gpp2, GPP_gpp2_size,
+			0, 0, 0, 0, 0, 1, 0);
+
+	if (support_fastmode)
+		tim_add_gpp_pkg(tim, "DDR3", GPP_ddr_uart, GPP_ddr_uart_size,
+				1, 0, 0, 0, 0, 0, 0);
+	else
 		tim_add_gpp_pkg(tim, "DDR3", GPP_ddr, GPP_ddr_size,
 				1, 0, 0, 0, 0, 0, 0);
-	}
 }
 
-void tim_parse(image_t *tim, int *numimagesp, int disasm)
+void tim_parse(image_t *tim, int *numimagesp, int disasm,
+	       int *supports_baudrate_change)
 {
 	static const u32 zerohash[16];
 	timhdr_t *timhdr;
@@ -355,6 +364,9 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm)
 	if (tim->size < sizeof(timhdr_t))
 		die("TIMH length too small (%u, should be at least %zu)",
 		    tim->size, sizeof(timhdr_t));
+
+	if (supports_baudrate_change)
+		*supports_baudrate_change = 0;
 
 	timhdr = (timhdr_t *) tim->data;
 
@@ -412,7 +424,8 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm)
 			   (pkgid & 0xffffff00) == 0x44445200) {
 			struct gpp_op *op = &pkg->gpp.ops[0];
 			u32 nops, ninst;
-			int i;
+			void *code;
+			int i, len;
 
 			nops = le32toh(pkg->gpp.nops);
 			ninst = le32toh(pkg->gpp.ninst);
@@ -445,9 +458,20 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm)
 				++op;
 			}
 
+			code = (void *)op;
+			len = pkg->size - 4 * sizeof(u32) - nops * sizeof(pkg->gpp.ops[0]);
+
+			if (supports_baudrate_change && !*supports_baudrate_change) {
+				*supports_baudrate_change = memmem(code, len, "UArx", 4) &&
+							    memmem(code, len, "UAtx", 4) &&
+							    memmem(code, len, "baud", 4);
+				if (*supports_baudrate_change)
+					printf("    Contains code for baudrate change\n");
+			}
+
 			if (disasm) {
 				printf("    Instructions:\n");
-				disassemble("\t", (void *)op, pkg->size / 4 - 4 - 2 * nops);
+				disassemble("\t", code, len / 4);
 			}
 		}
 	}

@@ -152,25 +152,25 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	key = load_key(keyfile);
 
 	timh = image_new(NULL, 0, TIMH_ID);
-	tim_minimal_image(timh, 1);
+	tim_minimal_image(timh, 1, TIMH_ID, 0);
 	tim_set_boot(timh, bootfs);
 	tim_imap_pkg_addr_set(timh, name2id("CSKT"), MOX_TIMN_OFFSET, partition);
 	tim_image_set_loadaddr(timh, TIMH_ID, timh_loadaddr);
 	tim_add_key(timh, name2id("CSK0"), key);
 	tim_sign(timh, key);
-	tim_parse(timh, NULL, gpp_disassemble);
+	tim_parse(timh, NULL, gpp_disassemble, NULL);
 
 	memcpy(buf, timh->data, timh->size);
 
 	timn = image_new(NULL, 0, TIMN_ID);
-	tim_minimal_image(timn, 2);
+	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timh, TIMN_ID, timn_loadaddr);
 	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
 	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
 		      partition, 0);
 	tim_sign(timn, key);
-	tim_parse(timn, NULL, gpp_disassemble);
+	tim_parse(timn, NULL, gpp_disassemble, NULL);
 
 	memcpy(buf + MOX_TIMN_OFFSET, timn->data, timn->size);
 	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
@@ -207,13 +207,13 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 	memset(buf, 0, MOX_U_BOOT_OFFSET);
 
 	timh = image_new(NULL, 0, TIMH_ID);
-	tim_minimal_image(timh, 0);
+	tim_minimal_image(timh, 0, TIMH_ID, 1);
 	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
 	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
 		      partition, 0);
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
-	tim_parse(timh, NULL, gpp_disassemble);
+	tim_parse(timh, NULL, gpp_disassemble, NULL);
 
 	memcpy(buf, timh->data, timh->size);
 	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
@@ -289,7 +289,7 @@ static void do_get_otp_hash(u32 *hash)
 
 	tim = image_find(TIMH_ID);
 	/* check if the TIM is correct by parsing it */
-	tim_parse(tim, NULL, gpp_disassemble);
+	tim_parse(tim, NULL, gpp_disassemble, NULL);
 	tim_get_otp_hash(tim, hash);
 }
 
@@ -349,7 +349,7 @@ static void help(void)
 	fprintf(stdout,
 		"Usage: mox-imager [OPTION]... [IMAGE]...\n\n"
 		"  -D, --device=TTY                            upload images via UART to TTY\n"
-		"  -b, --higher-baudrate                       use 230400 baudrate\n"
+		"  -b, --baudrate=BAUD                         fast upload mode by switching to baudrate BAUD, if supported by image\n"
 		"  -F, --fd=FD                                 TTY file descriptor\n"
 		"  -E, --send-escape-sequence                  send escape sequence to force UART mode\n"
 		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
@@ -376,7 +376,7 @@ static void help(void)
 
 static const struct option long_options[] = {
 	{ "device",			required_argument,	0,	'D' },
-	{ "higher-baudrate",		no_argument,		0,	'b' },
+	{ "baudrate",			required_argument,	0,	'b' },
 	{ "fd",				required_argument,	0,	'F' },
 	{ "send-escape-sequence",	no_argument,		0,	'E' },
 	{ "output",			required_argument,	0,	'o' },
@@ -406,7 +406,7 @@ int main(int argc, char **argv)
 		   *serial_number, *mac_address, *board_version, *otp_hash;
 	int sign, hash_u_boot, no_u_boot, otp_read, deploy, get_otp_hash,
 	    create_trusted_image, create_untrusted_image, send_escape,
-	    higher_baudrate;
+	    baudrate;
 	u32 image_bootfs, partition;
 	image_t *timh, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
@@ -415,14 +415,14 @@ int main(int argc, char **argv)
               mac_address = board_version = otp_hash = NULL;
 	sign = hash_u_boot = no_u_boot = otp_read = deploy = get_otp_hash =
 	     create_trusted_image = create_untrusted_image = send_escape =
-	     higher_baudrate = 0;
+	     baudrate = 0;
 
 	while (1) {
 		int optidx;
 		char c;
 
-		c = getopt_long(argc, argv, "D:bF:Eo:k:r:Rdg:sSunh", long_options,
-				NULL);
+		c = getopt_long(argc, argv, "D:b:F:Eo:k:r:Rdg:sSunh",
+				long_options, NULL);
 		if (c == -1)
 			break;
 
@@ -433,7 +433,9 @@ int main(int argc, char **argv)
 			tty = optarg;
 			break;
 		case 'b':
-			higher_baudrate = 1;
+			baudrate = atoi(optarg);
+			if (baudrate > 3000000)
+				die("Desired baudrate too high (maximum is 3 MBaud)");
 			break;
 		case 'F':
 			if (fdstr)
@@ -596,13 +598,15 @@ int main(int argc, char **argv)
 		image_delete_all();
 
 		timh = image_new(NULL, 0, TIMH_ID);
-		tim_minimal_image(timh, 0);
+		tim_minimal_image(timh, 0, TIMH_ID, 1);
 		wtmi = image_new((void *) wtmi_data, wtmi_data_size, WTMI_ID);
 		tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, 0, 0, 1);
 		tim_rehash(timh);
 		nimages = 2;
 		trusted = 0;
 	} else {
+		int has_fast_mode;
+
 		if (!images_given)
 			die("No images given, try -h for help");
 
@@ -631,9 +635,14 @@ int main(int argc, char **argv)
 			tim_rehash(timh);
 		}
 
-		tim_parse(timh, &nimages, gpp_disassemble);
+		tim_parse(timh, &nimages, gpp_disassemble,
+			  &has_fast_mode);
 		if (timn)
-			tim_parse(timn, &nimages_timn, gpp_disassemble);
+			tim_parse(timn, &nimages_timn, gpp_disassemble,
+				  &has_fast_mode);
+
+		if (baudrate && !has_fast_mode)
+			die("Fast upload mode not supported by this image\n");
 
 		if (!trusted)
 			tim_enable_hash(timh, OBMI_ID, hash_u_boot);
@@ -665,7 +674,7 @@ int main(int argc, char **argv)
 		else
 			openwtp(tty);
 
-		initwtp(send_escape, higher_baudrate);
+		initwtp(send_escape);
 
 		nimages_all = nimages;
 		if (timn)
@@ -680,6 +689,9 @@ int main(int argc, char **argv)
 
 			printf("Sending image type %s\n", id2name(imgtype));
 			sendimage(img, i == nimages_all - 1);
+
+			if (baudrate && img->id == (timn ? TIMN_ID : TIMH_ID))
+				try_change_baudrate(baudrate);
 		}
 
 		if (otp_read)
