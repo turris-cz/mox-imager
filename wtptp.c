@@ -20,7 +20,17 @@
 
 static int wtpfd;
 
-static void xread(void *buf, size_t size)
+static inline int tcdrain(int fd)
+{
+	return ioctl(fd, TCSBRK, 1);
+}
+
+static inline int tcflush(int fd, int q)
+{
+	return ioctl(fd, TCFLSH, q);
+}
+
+static int xread_timeout(void *buf, size_t size, int timeout)
 {
 	ssize_t rd, res;
 	struct pollfd pfd;
@@ -31,9 +41,11 @@ static void xread(void *buf, size_t size)
 	rd = 0;
 	while (rd < size) {
 		pfd.revents = 0;
-		res = poll(&pfd, 1, -1);
+		res = poll(&pfd, 1, timeout);
 		if (res < 0)
 			die("Cannot poll: %m\n");
+		else if (res == 0)
+			break;
 
 		res = read(wtpfd, buf + rd, size - rd);
 		if (res < 0)
@@ -41,6 +53,13 @@ static void xread(void *buf, size_t size)
 
 		rd += res;
 	}
+
+	return rd;
+}
+
+static void xread(void *buf, size_t size)
+{
+	xread_timeout(buf, size, -1);
 }
 
 static void xwrite(const void *buf, size_t size)
@@ -56,85 +75,88 @@ static void xwrite(const void *buf, size_t size)
 
 static int detect_char(u8 *c)
 {
-	ssize_t rd;
 	u8 rcv;
 
-	rd = read(wtpfd, &rcv, 1);
-	if (rd < 0)
-		die("Cannot detect char while sending escape sequence: %m");
-	if (rd == 1 && c)
+	if (xread_timeout(&rcv, 1, 50) != 1)
+		return 0;
+
+	if (c)
 		*c = rcv;
 
-	return rd == 1;
+	return 1;
+}
+
+static int eat_zeros(u8 *after)
+{
+	int zeros;
+	u8 rcv;
+
+	*after = 0x00;
+
+	for (zeros = 0; xread_timeout(&rcv, 1, 1000); ++zeros) {
+		if (rcv != 0x00) {
+			*after = rcv;
+			break;
+		}
+	}
+
+	return zeros;
 }
 
 static void raw_escape_seq(void)
 {
-	int i, nacks;
 	const u8 buf[8] = {0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-	u8 rcv;
+	int i;
 
-	for (i = 0, nacks; i < 10000 && nacks < 4; ++i) {
+	tcflush(wtpfd, TCIOFLUSH);
+	for (i = 0; i < 128; ++i) {
 		xwrite(buf, 8);
-		if (!detect_char(&rcv))
-			continue;
-		if (rcv == 0x3e)
-			break;
-		else if (rcv == 0x00)
-			++nacks;
+		usleep(500);
 	}
-
-	if (i == 10000)
-		die("Escape sequence failed!");
-}
-
-static void start_wtp(void)
-{
-	u8 buf[5];
-
-	xwrite("wtp\r", 4);
-	xread(buf, 5);
-	if (memcmp(buf, "wtp\r\n", 5))
-		die("Wrong reply: \"%.*s\"", 5, buf);
 }
 
 static int escape_seq(void)
 {
-	ssize_t rd, i;
-	u8 buf[512];
-	int prompt = 0;
+	u8 rcv, after;
 
-	printf("Sending escape sequence, you have cca 5-10 seconds to power up MOX\n\n");
+	printf("Sending escape sequence, please power up the device\n\n");
+
+	do {
+		raw_escape_seq();
+
+		if (!detect_char(&rcv))
+			continue;
+
+		switch (rcv) {
+		case 0x00:
+			printf("\e[1KReceived NAK, try restarting again\r");
+			break;
+		case 0xff:
+			printf("\e[1KReceived all ones byte\r");
+			break;
+		case 0x3e:
+			printf("\nReceived ACK\n");
+			break;
+		default:
+			die("\nInvalid reply to escape sequence: 0x%02x\n", rcv);
+		}
+	} while (rcv != 0x3e);
 
 	raw_escape_seq();
-	raw_escape_seq();
+
+	sleep(2);
+	tcflush(wtpfd, TCIOFLUSH);
+
 	xwrite("\r\r\r\r", 4);
 
-	while (1) {
-		usleep(500000);
-		rd = read(wtpfd, buf, 512);
-		if (rd < 0)
-			die("Cannot read: %m\n");
-
-		if (!rd)
-			break;
-
-		for (i = 0; i < rd; ++i)
-			if (buf[i] == '>')
-				prompt = 1;
+	eat_zeros(&after);
+	if (after == '\r') {
+		sleep(1);
+		tcflush(wtpfd, TCIOFLUSH);
+		return 1;
 	}
 
-	return prompt;
-}
-
-static inline int tcdrain(int fd)
-{
-	return ioctl(fd, TCSBRK, 1);
-}
-
-static inline int tcflush(int fd, int q)
-{
-	return ioctl(fd, TCFLSH, q);
+	return 0;
 }
 
 void setwtpfd(const char *fdstr)
@@ -157,17 +179,29 @@ void openwtp(const char *path)
 
 	memset(&opts, 0, sizeof(opts));
 	ioctl(wtpfd, TCGETS2, &opts);
+
 	opts.c_cflag &= ~CBAUD;
 	opts.c_cflag |= B115200;
-	opts.c_cc[VMIN] = 0;
-	opts.c_cc[VTIME] = 0;
+	opts.c_cc[VMIN] = 1;
+	opts.c_cc[VTIME] = 10;
 	opts.c_iflag = 0;
 	opts.c_lflag = 0;
 	opts.c_oflag = 0;
 	opts.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
 	opts.c_cflag |= CS8 | CREAD | CLOCAL;
+
 	ioctl(wtpfd, TCSETS2, &opts);
 	tcflush(wtpfd, TCIFLUSH);
+}
+
+static void start_wtp(void)
+{
+	u8 buf[5];
+
+	xwrite("wtp\r", 4);
+	xread(buf, 5);
+	if (memcmp(buf, "wtp\r\n", 5))
+		die("Wrong reply: \"%.*s\"", 5, buf);
 }
 
 void initwtp(int send_escape)
