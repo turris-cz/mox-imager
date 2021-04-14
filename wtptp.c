@@ -168,9 +168,31 @@ void setwtpfd(const char *fdstr)
 		die("Wrong file descriptor %s", fdstr);
 }
 
+static void reset_clocal(const char *path)
+{
+	struct termios2 opts;
+	int fd;
+
+	fd = open(path, O_RDONLY | O_NONBLOCK | O_NOCTTY);
+	if (fd < 0)
+		die("Cannot open %s: %m", path);
+
+	memset(&opts, 0, sizeof(opts));
+	ioctl(wtpfd, TCGETS2, &opts);
+
+	opts.c_cflag |= CLOCAL;
+
+	ioctl(wtpfd, TCSETS2, &opts);
+
+	close(fd);
+}
+
 void openwtp(const char *path)
 {
 	struct termios2 opts;
+
+	/* to avoid hangs */
+	reset_clocal(path);
 
 	wtpfd = open(path, O_RDWR | O_NOCTTY);
 
