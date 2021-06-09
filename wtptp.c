@@ -349,14 +349,59 @@ void try_change_baudrate(int baudrate)
 	ioctl(wtpfd, TCGETS2, &opts);
 }
 
+/*
+ * Some images may print additional characters on UART when loaded. We must
+ * ignore this characters in WTPTP protocol.
+ *
+ * Try to receive the until character sequence in first up to max bytes, and
+ * if stdout is a TTY, print anything that was sent before this sequence to
+ * in yellow.
+ */
+static int read_until(const u8 *until, size_t ulen, size_t max)
+{
+	int i, pos, printed = 0, istty;
+	u8 buf[ulen], last;
+
+	istty = isatty(STDOUT_FILENO);
+
+	pos = 0;
+	for (i = 0; i < max; ++i) {
+		xread(&buf[pos], 1);
+		if (buf[pos] == until[pos]) {
+			++pos;
+		} else {
+			if (istty) {
+				if (!printed)
+					printf("\033[33;1m");
+				printf("%.*s", pos + 1, (char *)buf);
+				printed += pos + 1;
+				last = buf[pos];
+			}
+			pos = 0;
+		}
+
+		if (pos == ulen)
+			break;
+	}
+
+	if (printed) {
+		if (last != '\n')
+			putchar('\n');
+		printf("\033[0m");
+	}
+
+	return pos == ulen;
+}
+
 static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
 {
-	xread(resp, 6);
+	const u8 chk[3] = { cmd, seq, cid };
 
-	if (resp->cmd != cmd || resp->seq != seq || resp->cid != cid)
-		die("Comparison fail: cmd[%02x %02x %02x] != "
-		    "resp[%02x %02x %02x]", cmd, seq, cid, resp->cmd, resp->seq,
-		    resp->cid);
+	if (!read_until(chk, sizeof(chk), 256))
+		die("Failed cmd[%02x %02x %02x]", cmd, seq, cid);
+
+	memcpy(resp, chk, 3);
+	xread(((void *) resp) + 3, 3);
 
 	if (resp->len > 0)
 		xread(((void *) resp) + 6, resp->len);
@@ -418,19 +463,12 @@ static void sendcmd(u8 cmd, u8 seq, u8 cid, u8 flags, u32 len, const void *data,
 
 static void preamble(void)
 {
-	u8 buf[6];
+	static const u8 chk[4] = { 0x00, 0xd3, 0x02, 0x2b };
 
 	xwrite("\x00\xd3\x02\x2b", 4);
-	xread(buf, 4);
 
-	if (!memcmp(buf, "TIM-", 4)) {
-		xread(buf, 5);
-		xread(buf, 4);
-	}
-
-	if (memcmp(buf, "\x00\xd3\x02\x2b", 4))
-		die("Wrong reply to preamble: \"%.*s\" (%02x %02x %02x %02x)",
-		    4, buf, buf[0], buf[1], buf[2], buf[3]);
+	if (!read_until(chk, sizeof(chk), 256))
+		die("Wrong reply to preamble");
 }
 
 static void getversion(void)
