@@ -137,6 +137,9 @@ static int do_load(void *data, size_t data_size, u32 hdr_addr)
 			if (img->id == timhdr->identifier)
 				continue;
 
+			if (data_size < entry)
+				continue;
+
 			if (data_size < entry + size) {
 				size = data_size - entry;
 				if (img->sizetohash) {
