@@ -18,7 +18,7 @@
 #include "utils.h"
 #include "wtptp.h"
 
-static int wtpfd;
+static int wtpfd = -1;
 
 static inline int tcdrain(int fd)
 {
