@@ -434,8 +434,8 @@ int main(int argc, char **argv)
 			break;
 		case 'b':
 			baudrate = atoi(optarg);
-			if (baudrate > 3000000)
-				die("Desired baudrate too high (maximum is 3 MBaud)");
+			if (baudrate > 6000000)
+				die("Desired baudrate too high (maximum is 6 MBaud)");
 			break;
 		case 'F':
 			if (fdstr)
