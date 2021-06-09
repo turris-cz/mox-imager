@@ -437,22 +437,24 @@ static void getversion(void)
 {
 	static int printed;
 	resp_t resp;
-	u32 date;
 
 	sendcmd(0x20, 0, 0, 0, 0, NULL, &resp);
 
 	if (resp.len != 12)
 		die("GetVersion response length = %i != 12", resp.len);
 
-	date = *(u32 *) &resp.data[4];
-
 	if (!printed) {
-		printed = 1;
+		u32 date;
 
-		printf("GetVersion response: stepping \"%.*s\", "
-		       "date = %x/%x/%x, CPU \"%.*s\"\n", 4, &resp.data[0],
-		       (date >> 24) & 0xff, (date >> 16) & 0xff, date & 0xffff,
-		       4, &resp.data[8]);
+		date = le32toh(*(u32 *)&resp.data[4]);
+
+		printf("GetVersion response: version %c.%c.%c%c, "
+		       "date %04x-%02x-%02x, CPU %s\n",
+		       resp.data[3], resp.data[2], resp.data[1], resp.data[0],
+		       date & 0xffff, (date >> 24) & 0xff, (date >> 16) & 0xff,
+		       id2name(*(u32 *)&resp.data[8]));
+
+		printed = 1;
 	}
 }
 
