@@ -32,6 +32,7 @@
 #define MOX_ENV_OFFSET		0x180000
 
 static int gpp_disassemble;
+int terminal_on_exit = 0;
 
 struct mox_builder_data {
 	u32 op;
@@ -352,6 +353,7 @@ static void help(void)
 		"  -b, --baudrate=BAUD                         fast upload mode by switching to baudrate BAUD, if supported by image\n"
 		"  -F, --fd=FD                                 TTY file descriptor\n"
 		"  -E, --send-escape-sequence                  send escape sequence to force UART mode\n"
+		"  -t, --terminal                              run mini terminal after images are sent\n"
 		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
 		"  -k, --key=KEY                               read ECDSA-521 private key from file KEY\n"
 		"  -r, --random-seed=FILE                      read random seed from file\n"
@@ -379,6 +381,7 @@ static const struct option long_options[] = {
 	{ "baudrate",			required_argument,	0,	'b' },
 	{ "fd",				required_argument,	0,	'F' },
 	{ "send-escape-sequence",	no_argument,		0,	'E' },
+	{ "terminal",			no_argument,		0,	't' },
 	{ "output",			required_argument,	0,	'o' },
 	{ "key",			required_argument,	0,	'k' },
 	{ "random-seed",		required_argument,	0,	'r' },
@@ -421,7 +424,7 @@ int main(int argc, char **argv)
 		int optidx;
 		char c;
 
-		c = getopt_long(argc, argv, "D:b:F:Eo:k:r:Rdg:sSunh",
+		c = getopt_long(argc, argv, "D:b:F:Eo:k:r:Rdg:sStunh",
 				long_options, NULL);
 		if (c == -1)
 			break;
@@ -465,6 +468,9 @@ int main(int argc, char **argv)
 			break;
 		case 'd':
 			deploy = 1;
+			break;
+		case 't':
+			terminal_on_exit = 1;
 			break;
 		case 'N':
 			if (serial_number)
@@ -581,6 +587,9 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	}
 
+	if (!otp_read && !deploy && !images_given && !terminal_on_exit)
+		die("No images given, try -h for help");
+
 	if (otp_read || deploy) {
 		struct mox_builder_data *mbd;
 		image_t *wtmi;
@@ -604,11 +613,8 @@ int main(int argc, char **argv)
 		tim_rehash(timh);
 		nimages = 2;
 		trusted = 0;
-	} else {
+	} else if (images_given) {
 		int has_fast_mode;
-
-		if (!images_given)
-			die("No images given, try -h for help");
 
 		if (get_otp_hash) {
 			u32 hash[8];
@@ -646,9 +652,13 @@ int main(int argc, char **argv)
 
 		if (!trusted)
 			tim_enable_hash(timh, OBMI_ID, hash_u_boot);
+	} else {
+		nimages_timn = 0;
+		nimages = 0;
+		trusted = 0;
 	}
 
-	if (!trusted) {
+	if (images_given && !trusted) {
 		if (tty || fdstr)
 			tim_set_boot(timh, BOOTFS_UART);
 		else if (output)
@@ -674,7 +684,8 @@ int main(int argc, char **argv)
 		else
 			openwtp(tty);
 
-		initwtp(send_escape);
+		if (images_given || send_escape)
+			initwtp(send_escape);
 
 		nimages_all = nimages;
 		if (timn)
@@ -698,6 +709,9 @@ int main(int argc, char **argv)
 			uart_otp_read();
 		else if (deploy)
 			uart_deploy();
+
+		if (terminal_on_exit)
+			uart_terminal();
 
 		closewtp();
 	}

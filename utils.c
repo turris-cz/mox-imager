@@ -10,6 +10,12 @@
 #include <string.h>
 #include <time.h>
 
+#pragma weak terminal_on_exit
+int terminal_on_exit = 0;
+
+#pragma weak uart_terminal
+void uart_terminal(void) {}
+
 __attribute__((noreturn)) void die(const char *fmt, ...)
 {
 	va_list ap;
@@ -19,6 +25,9 @@ __attribute__((noreturn)) void die(const char *fmt, ...)
 	va_end(ap);
 
 	fprintf(stderr, "\n\n");
+
+	if (terminal_on_exit)
+		uart_terminal();
 
 	exit(EXIT_FAILURE);
 }

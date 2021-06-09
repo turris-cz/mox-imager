@@ -700,3 +700,105 @@ wrong:
 	eccread(buf, 13);
 	printf("FAIL%.*s\n", 13, buf);
 }
+
+static int uart_terminal_pipe(int in, int out, const char *quit, int *s)
+{
+	char _buf[128], *buf = _buf;
+	ssize_t nin, nout;
+
+	nin = read(in, buf, sizeof(_buf));
+	if (nin <= 0)
+		return -1;
+
+	if (quit) {
+		int i;
+
+		for (i = 0; i < nin; i++) {
+			if (*buf == quit[*s]) {
+				(*s)++;
+				if (!quit[*s])
+					return 0;
+				buf++;
+				nin--;
+			} else {
+				while (*s > 0) {
+					nout = write(out, quit, *s);
+					if (nout <= 0)
+						return -1;
+					(*s) -= nout;
+				}
+			}
+		}
+	}
+
+	while (nin > 0) {
+		nout = write(out, buf, nin);
+		if (nout <= 0)
+			return -1;
+		nin -= nout;
+	}
+
+	return 0;
+}
+
+void uart_terminal(void) {
+	const char *quit = "\34c";
+	struct termios2 otio, tio;
+	int in, s;
+
+	if (wtpfd < 0)
+		return;
+
+	in = isatty(STDIN_FILENO) ? STDIN_FILENO : -1;
+
+	if (in >= 0) {
+		memset(&otio, 0, sizeof(otio));
+		ioctl(in, TCGETS2, &otio);
+		tio = otio;
+		/* cfmakeraw */
+		tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP
+				| INLCR | IGNCR | ICRNL | IXON);
+		tio.c_oflag &= ~OPOST;
+		tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+		tio.c_cflag &= ~(CSIZE | PARENB);
+		tio.c_cflag |= CS8;
+		ioctl(in, TCSETS2, &tio);
+		printf("\r\n[Type Ctrl-%c + %c to quit]\r\n\r\n",
+		       quit[0] | 0100, quit[1]);
+	}
+
+	s = 0;
+
+	do {
+		fd_set rfds;
+		int nfds = 0;
+
+		FD_SET(wtpfd, &rfds);
+		nfds = nfds < wtpfd ? wtpfd : nfds;
+
+		if (in >= 0) {
+			FD_SET(in, &rfds);
+			nfds = nfds < in ? in : nfds;
+		}
+
+		nfds = select(nfds + 1, &rfds, NULL, NULL, NULL);
+		if (nfds < 0)
+			break;
+
+		if (FD_ISSET(wtpfd, &rfds)) {
+			if (uart_terminal_pipe(wtpfd, STDOUT_FILENO, NULL,
+					       NULL))
+				break;
+		}
+
+		if (FD_ISSET(in, &rfds)) {
+			if (uart_terminal_pipe(in, wtpfd, quit, &s))
+				break;
+		}
+	} while (quit[s] != 0);
+
+	if (in >= 0)
+		ioctl(in, TCSETS2, &otio);
+
+	printf("\n");
+}
