@@ -350,6 +350,19 @@ static int compute_best_uart_params(int clk, int desired_baud, u32 *div, u32 *m)
 	return 0;
 }
 
+static void change_baudrate(int baudrate)
+{
+	struct termios2 opts = {};
+
+	ioctl(wtpfd, TCGETS2, &opts);
+	opts.c_cflag &= ~CBAUD;
+	opts.c_cflag |= BOTHER;
+	opts.c_ispeed = opts.c_ospeed = baudrate;
+	ioctl(wtpfd, TCSETS2, &opts);
+	usleep(10000);
+	tcflush(wtpfd, TCIFLUSH);
+}
+
 void try_change_baudrate(int baudrate)
 {
 	struct termios2 opts;
@@ -385,14 +398,7 @@ void try_change_baudrate(int baudrate)
 	xwrite(buf, 6);
 	usleep(300000);
 
-	memset(&opts, 0, sizeof(opts));
-	ioctl(wtpfd, TCGETS2, &opts);
-	opts.c_cflag &= ~CBAUD;
-	opts.c_cflag |= BOTHER;
-	opts.c_ispeed = opts.c_ospeed = baudrate;
-	ioctl(wtpfd, TCSETS2, &opts);
-	usleep(10000);
-	tcflush(wtpfd, TCIFLUSH);
+	change_baudrate(baudrate);
 }
 
 static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
@@ -750,6 +756,8 @@ void uart_terminal(void) {
 
 	if (wtpfd < 0)
 		return;
+
+	change_baudrate(115200);
 
 	in = isatty(STDIN_FILENO) ? STDIN_FILENO : -1;
 
