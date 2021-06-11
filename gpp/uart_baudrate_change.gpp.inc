@@ -46,6 +46,11 @@ BRANCH uEND
 
 LABEL uCHG
 
+; retransmit "baud" back to notify that we are doing this
+LOAD_SM_VAL SM0 0x4
+LOAD_SM_VAL SM1 0x1FFFF000
+CALL(UAtx, Ru_8)
+
 ; to compute baudrate generator parameters the host will need to know
 ; TBG-A-P clock frequency:
 ;   1. XTAL frequency (from divider of counter 2, set by BootROM)

@@ -242,6 +242,50 @@ void closewtp(void)
 	close(wtpfd);
 }
 
+/*
+ * Some images may print additional characters on UART when loaded. We must
+ * ignore this characters in WTPTP protocol.
+ *
+ * Try to receive the until character sequence in first up to max bytes, and
+ * if stdout is a TTY, print anything that was sent before this sequence to
+ * in yellow.
+ */
+static int read_until(const u8 *until, size_t ulen, size_t max)
+{
+	int i, pos, printed = 0, istty;
+	u8 buf[ulen], last;
+
+	istty = isatty(STDOUT_FILENO);
+
+	pos = 0;
+	for (i = 0; i < max; ++i) {
+		xread(&buf[pos], 1);
+		if (buf[pos] == until[pos]) {
+			++pos;
+		} else {
+			if (istty) {
+				if (!printed)
+					printf("\033[33;1m");
+				printf("%.*s", pos + 1, (char *)buf);
+				printed += pos + 1;
+				last = buf[pos];
+			}
+			pos = 0;
+		}
+
+		if (pos == ulen)
+			break;
+	}
+
+	if (printed) {
+		if (last != '\n')
+			putchar('\n');
+		printf("\033[0m");
+	}
+
+	return pos == ulen;
+}
+
 static int compute_tbg_freq(int xtal, int fbdiv, int refdiv, int vcodiv_sel)
 {
 	if (!refdiv)
@@ -322,6 +366,10 @@ void try_change_baudrate(int baudrate)
 	usleep(100000);
 
 	xwrite(buf, 4);
+
+	if (!read_until(buf, 4, 256))
+		die("Did not receive \"baud\" command reply!");
+
 	xread(buf, 5);
 
 	tbg_freq = compute_tbg_freq(buf[0], buf[1],
@@ -347,50 +395,6 @@ void try_change_baudrate(int baudrate)
 	tcflush(wtpfd, TCIFLUSH);
 
 	ioctl(wtpfd, TCGETS2, &opts);
-}
-
-/*
- * Some images may print additional characters on UART when loaded. We must
- * ignore this characters in WTPTP protocol.
- *
- * Try to receive the until character sequence in first up to max bytes, and
- * if stdout is a TTY, print anything that was sent before this sequence to
- * in yellow.
- */
-static int read_until(const u8 *until, size_t ulen, size_t max)
-{
-	int i, pos, printed = 0, istty;
-	u8 buf[ulen], last;
-
-	istty = isatty(STDOUT_FILENO);
-
-	pos = 0;
-	for (i = 0; i < max; ++i) {
-		xread(&buf[pos], 1);
-		if (buf[pos] == until[pos]) {
-			++pos;
-		} else {
-			if (istty) {
-				if (!printed)
-					printf("\033[33;1m");
-				printf("%.*s", pos + 1, (char *)buf);
-				printed += pos + 1;
-				last = buf[pos];
-			}
-			pos = 0;
-		}
-
-		if (pos == ulen)
-			break;
-	}
-
-	if (printed) {
-		if (last != '\n')
-			putchar('\n');
-		printf("\033[0m");
-	}
-
-	return pos == ulen;
 }
 
 static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
