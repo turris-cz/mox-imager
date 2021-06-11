@@ -23,7 +23,7 @@ DEFRET(Ru_7)
 
 #endif
 
-BRANCH END
+BRANCH FAIL
 
 #include "ddr_test.gpp.inc"
 #include "ddr3.gpp.inc"
@@ -164,3 +164,5 @@ LABEL END
 #ifdef SUPPORT_UART_BAUDRATE_CHANGE
 #include "uart_baudrate_change.gpp.inc"
 #endif
+
+LABEL FAIL
