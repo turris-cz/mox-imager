@@ -369,8 +369,8 @@ static void help(void)
 		"      --create-untrusted-image=SPI/UART/EMMC  create untrusted secure image (no private key required)\n"
 		"  -S  --disassemble                           disassemble GPP code when parsing TIM\n"
 		"      --get-otp-hash                          print OTP hash of given secure firmware image\n"
-		"  -u, --hash-u-boot                           save OBMI (U-Boot) image hash to TIM\n"
-		"  -n, --no-u-boot                             remove OBMI (U-Boot) image from TIM\n"
+		"  -u, --hash-a53-firmware                     save A53 firmware (TF-A + U-Boot) image hash to TIM\n"
+		"  -n, --no-a53-firmware                       remove A53 firmware (TF-A + U-Boot) image from TIM\n"
 		"  -h, --help                                  show this help and exit\n"
 		"\n");
 	exit(EXIT_SUCCESS);
@@ -397,8 +397,8 @@ static const struct option long_options[] = {
 	{ "create-untrusted-image",	required_argument,	0,	'C' },
 	{ "disassemble",		no_argument,		0,	'S' },
 	{ "get-otp-hash",		no_argument,		0,	'G' },
-	{ "hash-u-boot",		no_argument,		0,	'u' },
-	{ "no-u-boot",			no_argument,		0,	'n' },
+	{ "hash-a53-firmware",		no_argument,		0,	'u' },
+	{ "no-a53-firmware",		no_argument,		0,	'n' },
 	{ "help",			no_argument,		0,	'h' },
 	{ 0,				0,			0,	0 },
 };
@@ -407,18 +407,18 @@ int main(int argc, char **argv)
 {
 	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey,
 		   *serial_number, *mac_address, *board_version, *otp_hash;
-	int sign, hash_u_boot, no_u_boot, otp_read, deploy, get_otp_hash,
-	    create_trusted_image, create_untrusted_image, send_escape,
-	    baudrate;
+	int sign, hash_a53_firmware, no_a53_firmware, otp_read, deploy,
+	    get_otp_hash, create_trusted_image, create_untrusted_image,
+	    send_escape, baudrate;
 	u32 image_bootfs, partition;
 	image_t *timh, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
 
 	tty = fdstr = output = keyfile = seed = genkey = serial_number =
               mac_address = board_version = otp_hash = NULL;
-	sign = hash_u_boot = no_u_boot = otp_read = deploy = get_otp_hash =
-	     create_trusted_image = create_untrusted_image = send_escape =
-	     baudrate = 0;
+	sign = hash_a53_firmware = no_a53_firmware = otp_read = deploy =
+	       get_otp_hash = create_trusted_image = create_untrusted_image =
+	       send_escape = baudrate = 0;
 
 	while (1) {
 		int optidx;
@@ -522,10 +522,10 @@ int main(int argc, char **argv)
 			get_otp_hash = 1;
 			break;
 		case 'u':
-			hash_u_boot = 1;
+			hash_a53_firmware = 1;
 			break;
 		case 'n':
-			no_u_boot = 1;
+			no_a53_firmware = 1;
 			break;
 		case 'h':
 			help();
@@ -634,7 +634,7 @@ int main(int argc, char **argv)
 
 		trusted = tim_is_trusted(timh);
 
-		if (no_u_boot) {
+		if (no_a53_firmware) {
 			if (trusted)
 				die("Cannot modify trusted image!\n");
 			tim_remove_image(timh, name2id("OBMI"));
@@ -655,7 +655,7 @@ int main(int argc, char **argv)
 		}
 
 		if (!trusted)
-			tim_enable_hash(timh, OBMI_ID, hash_u_boot);
+			tim_enable_hash(timh, OBMI_ID, hash_a53_firmware);
 	} else {
 		nimages_timn = 0;
 		nimages = 0;
