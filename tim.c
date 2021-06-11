@@ -806,6 +806,58 @@ static void tim_add_cidp_pkg(image_t *tim, const char *consumer, int npkgs, ...)
 	free(pkg);
 }
 
+static void tim_append_gpp_code(image_t *tim, const char *name, void *code,
+				size_t codesize)
+{
+	void *oldend, *codeend;
+	timhdr_t *timhdr;
+	respkg_t *pkg;
+
+	if (codesize & 3)
+		die("GPP code length must be a multiple of 4!");
+
+	timhdr = (timhdr_t *) tim->data;
+
+	tim_grow(tim, codesize);
+	oldend = tim->data + tim->size - codesize;
+
+	timhdr = (timhdr_t *) tim->data;
+
+	/* find the package */
+	for (pkg = firstpkg(timhdr); pkg; pkg = nextpkg(timhdr, pkg))
+		if (pkg->id == htole32(name2id(name)))
+			break;
+
+	if (!pkg)
+		die("Package %s not found!", name);
+
+
+	/* make place at the end of the package for new code */
+	codeend = ((void *) pkg) + le32toh(pkg->size);
+	memmove(codeend + codesize, codeend, oldend - codeend);
+
+	/* append code */
+	memcpy(codeend, code, codesize);
+	pkg->gpp.ninst = htole32(le32toh(pkg->gpp.ninst) +
+				 disassemble(NULL, code, codesize / 4));
+
+	/* change size members and rehash */
+	pkg->size = htole32(le32toh(pkg->size) + codesize);
+	timhdr->sizeofreserved = htole32(le32toh(timhdr->sizeofreserved) +
+						 codesize);
+
+	tim_rehash(tim);
+}
+
+#include "gpp/uart_baudrate_change.c"
+
+void tim_inject_baudrate_change_support(image_t *tim)
+{
+	printf("Injecting baudrate change code into DDR3 GPP package\n\n");
+	tim_append_gpp_code(tim, "DDR3", GPP_uart_baudrate_change,
+			    GPP_uart_baudrate_change_size);
+}
+
 static void tim_add_gpp_pkg(image_t *tim, const char *name, void *code,
 			    size_t codesize, int init_ddr,
 			    int enable_memtest, u32 memtest_start,

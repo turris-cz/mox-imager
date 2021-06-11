@@ -294,6 +294,7 @@ extern void tim_parse(image_t *tim, int *numimagesp, int disasm,
 		      int *supports_baudrate_change);
 extern void tim_enable_hash(image_t *tim, u32 id, int enable);
 extern void tim_rehash(image_t *tim);
+extern void tim_inject_baudrate_change_support(image_t *tim);
 extern void tim_get_otp_hash(image_t *tim, u32 *hash);
 extern void tim_sign(image_t *tim, EC_KEY *key);
 extern void tim_set_boot(image_t *tim, u32 boot);

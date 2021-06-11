@@ -647,8 +647,12 @@ int main(int argc, char **argv)
 			tim_parse(timn, &nimages_timn, gpp_disassemble,
 				  &has_fast_mode);
 
-		if (baudrate && !has_fast_mode)
-			die("Fast upload mode not supported by this image\n");
+		if (baudrate && !has_fast_mode) {
+			if (trusted)
+				die("Fast upload mode not supported by this image\n"
+				    "and cannot inject the code into trusted image!\n");
+			tim_inject_baudrate_change_support(timn ? : timh);
+		}
 
 		if (!trusted)
 			tim_enable_hash(timh, OBMI_ID, hash_u_boot);
