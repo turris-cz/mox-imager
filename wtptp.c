@@ -350,13 +350,36 @@ static int compute_best_uart_params(int clk, int desired_baud, u32 *div, u32 *m)
 	return 0;
 }
 
+static tcflag_t baudrate_to_cflag(int baudrate)
+{
+#define B(b) { B ## b, b }
+	static const struct {
+		tcflag_t cflag;
+		int baudrate;
+	} map[] = {
+		B(50), B(75), B(110), B(134), B(150), B(200), B(300), B(600),
+		B(1200), B(1800), B(2400), B(4800), B(9600), B(19200), B(38400),
+		B(57600), B(115200), B(230400), B(460800), B(500000), B(576000),
+		B(921600), B(1000000), B(1152000), B(1500000), B(2000000),
+		B(2500000), B(3000000), B(3500000), B(4000000), B(0),
+	};
+#undef B
+	int i;
+
+	for (i = 0; map[i].baudrate; i++)
+		if (map[i].baudrate == baudrate)
+			return map[i].cflag;
+
+	return BOTHER;
+}
+
 static void change_baudrate(int baudrate)
 {
 	struct termios2 opts = {};
 
 	ioctl(wtpfd, TCGETS2, &opts);
 	opts.c_cflag &= ~CBAUD;
-	opts.c_cflag |= BOTHER;
+	opts.c_cflag |= baudrate_to_cflag(baudrate);
 	opts.c_ispeed = opts.c_ospeed = baudrate;
 	ioctl(wtpfd, TCSETS2, &opts);
 	usleep(10000);
