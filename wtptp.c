@@ -393,8 +393,6 @@ void try_change_baudrate(int baudrate)
 	ioctl(wtpfd, TCSETS2, &opts);
 	usleep(10000);
 	tcflush(wtpfd, TCIFLUSH);
-
-	ioctl(wtpfd, TCGETS2, &opts);
 }
 
 static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
