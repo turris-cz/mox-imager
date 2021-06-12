@@ -377,8 +377,8 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 	bootfs = le32toh(timhdr->bootflashsign);
 	sizeofreserved = le32toh(timhdr->sizeofreserved);
 
-	printf("TIM version %u.%u.%u, issue date %04x-%02x-%02x, %s, %u images,"
-	       " %u keys, boot flash sign %s\n",
+	printf("TIM version %u.%u.%02u, issue date %04x-%02x-%02x, %s, %u "
+	       "images, %u keys, boot flash sign %s\n",
 	       version >> 16, (version >> 8) & 0xff, version & 0xff,
 	       date & 0xffff, (date >> 16) & 0xff, date >> 24,
 	       timhdr->trusted ? "trusted" : "non-trusted", numimages, numkeys,
