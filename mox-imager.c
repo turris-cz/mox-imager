@@ -613,6 +613,7 @@ int main(int argc, char **argv)
 		tim_rehash(timh);
 		nimages = 2;
 		trusted = 0;
+		images_given = 1;
 	} else if (images_given) {
 		int has_fast_mode;
 
