@@ -319,10 +319,10 @@ static int compute_best_uart_params(int clk, int desired_baud, u32 *div, u32 *m)
 
 		for (m2 = lo; m2 <= hi; ++m2) {
 			for (m3 = lo; m3 <= hi; ++m3) {
-				if (abs(m2 - m3) > 1)
+				if (abs((int)m2 - m3) > 1)
 					continue;
 				for (m4 = lo; m4 <= hi; ++m4) {
-					if (abs(m3 - m4) > 1)
+					if (abs((int)m3 - m4) > 1)
 						continue;
 					t = (3 * (m1 + m2) + 2 * (m3 + m4)) * d / (double)clk;
 					err = __builtin_fabs(t / ideal_t - 1.0);
