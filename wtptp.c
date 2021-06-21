@@ -294,14 +294,23 @@ static int compute_tbg_freq(int xtal, int fbdiv, int refdiv, int vcodiv_sel)
 	return 1000000 * (u64)xtal * (fbdiv << 2) / (refdiv * (1 << vcodiv_sel));
 }
 
-static int compute_best_uart_params(int clk, int desired_baud, u32 *div, u32 *m)
+static int compute_best_uart_params(u32 clk, u32 desired_baud, u32 *div, u32 *m)
 {
 	u8 m1, m2, m3, m4, best_m1, best_m2, best_m3, best_m4;
-	double t, ideal_t, err, best_err = 1.0;
-	int d, d_max, best_d;
+	u64 ticks, ratio, err, best_err = -1ULL;
+	u32 d, d_max, best_d;
 	_Bool eq, best_eq;
-
-	ideal_t = 10.0 / desired_baud;
+	/*
+	 * We are using fixed-point arithmetic to compute best possible
+	 * parameters. We need to know the maximum possible parameter value for
+	 * the integral part of the fixed-point number so that we know how many
+	 * bits we must shift.
+	 */
+	const u64 fp_max_param =
+		/* max ticks * max desired baud */
+		(u64)((3 * (63 + 63) + 2 * (63 + 63)) * 1023) * 6000000;
+	const int fp_shift = __builtin_clzll(fp_max_param) - 1;
+	const u64 fp_1 = 1ULL << fp_shift;
 
 	d_max = clk / (desired_baud * 16);
 	if (d_max > 1023)
@@ -324,8 +333,16 @@ static int compute_best_uart_params(int clk, int desired_baud, u32 *div, u32 *m)
 				for (m4 = lo; m4 <= hi; ++m4) {
 					if (abs((int)m3 - m4) > 1)
 						continue;
-					t = (3 * (m1 + m2) + 2 * (m3 + m4)) * d / (double)clk;
-					err = __builtin_fabs(t / ideal_t - 1.0);
+
+					ticks = (3 * ((u32)m1 + m2) + 2 * ((u32)m3 + m4)) * d;
+					ratio = ((ticks * desired_baud) << fp_shift) / (10ULL * clk);
+
+					/* distance from 1 */
+					if (ratio > fp_1)
+						err = ratio - fp_1;
+					else
+						err = fp_1 - ratio;
+
 					eq = (m1 == m2 && m2 == m3 && m3 == m4);
 					if (err < best_err || (err == best_err && eq && !best_eq)) {
 						best_err = err;
@@ -341,7 +358,7 @@ static int compute_best_uart_params(int clk, int desired_baud, u32 *div, u32 *m)
 		}
 	}
 
-	if (best_err == 1.0)
+	if (best_err == -1ULL)
 		return -1;
 
 	*div = best_d;
