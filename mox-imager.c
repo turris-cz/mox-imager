@@ -710,6 +710,11 @@ int main(int argc, char **argv)
 				try_change_baudrate(baudrate);
 		}
 
+		if (nimages_all)
+			change_baudrate(115200);
+		else if (baudrate)
+			change_baudrate(baudrate);
+
 		if (otp_read)
 			uart_otp_read();
 		else if (deploy)

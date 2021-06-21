@@ -42,6 +42,18 @@ Sometimes needs several tries
 mox-imager -D /dev/ttyUSB0 -E .../flash-image.bin
 ```
 
+### Upload with maximal baudrate 6000000 and start mini-terminal
+
+```
+mox-imager -D /dev/ttyUSB0 -b 6000000 -t .../flash-image.bin
+```
+
+### Start only mini-terminal (like minicom/kermit) without uploading
+
+```
+mox-imager -D /dev/ttyUSB0 -t
+```
+
 ### Print image info
 
 ```

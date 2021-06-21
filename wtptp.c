@@ -390,7 +390,7 @@ static tcflag_t baudrate_to_cflag(int baudrate)
 	return BOTHER;
 }
 
-static void change_baudrate(int baudrate)
+void change_baudrate(int baudrate)
 {
 	struct termios2 opts = {};
 
@@ -796,8 +796,6 @@ void uart_terminal(void) {
 
 	if (wtpfd < 0)
 		return;
-
-	change_baudrate(115200);
 
 	in = isatty(STDIN_FILENO) ? STDIN_FILENO : -1;
 
