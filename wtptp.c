@@ -281,6 +281,7 @@ static int read_until(const u8 *until, size_t ulen, size_t max)
 		if (last != '\n')
 			putchar('\n');
 		printf("\033[0m");
+		fflush(stdout);
 	}
 
 	return pos == ulen;
