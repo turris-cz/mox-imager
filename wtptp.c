@@ -178,11 +178,11 @@ static void reset_clocal(const char *path)
 		die("Cannot open %s: %m", path);
 
 	memset(&opts, 0, sizeof(opts));
-	ioctl(wtpfd, TCGETS2, &opts);
+	ioctl(fd, TCGETS2, &opts);
 
 	opts.c_cflag |= CLOCAL;
 
-	ioctl(wtpfd, TCSETS2, &opts);
+	ioctl(fd, TCSETS2, &opts);
 
 	close(fd);
 }
