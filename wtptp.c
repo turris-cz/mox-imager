@@ -73,11 +73,11 @@ static void xwrite(const void *buf, size_t size)
 		die("Cannot write %zu bytes: written only %zi", size, res);
 }
 
-static int detect_char(u8 *c)
+static int detect_char(u8 *c, int timeout)
 {
 	u8 rcv;
 
-	if (xread_timeout(&rcv, 1, 50) != 1)
+	if (xread_timeout(&rcv, 1, timeout) != 1)
 		return 0;
 
 	if (c)
@@ -86,78 +86,144 @@ static int detect_char(u8 *c)
 	return 1;
 }
 
-static int eat_zeros(u8 *after)
+static int eat_zeros_and_detect_char(u8 *c, int timeout)
 {
-	int zeros;
 	u8 rcv;
+	int i;
 
-	*after = 0x00;
-
-	for (zeros = 0; xread_timeout(&rcv, 1, 1000); ++zeros) {
-		if (rcv != 0x00) {
-			*after = rcv;
+	for (i = 0; i < 256; i++) {
+		if (!detect_char(c, 0))
 			break;
-		}
+		if (*c != 0x00)
+			return 1;
 	}
 
-	return zeros;
+	return detect_char(c, timeout);
 }
 
 static void raw_escape_seq(void)
 {
 	const u8 buf[8] = {0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-	int i;
 
-	tcflush(wtpfd, TCIOFLUSH);
-	for (i = 0; i < 128; ++i) {
-		xwrite(buf, 8);
-		usleep(500);
-	}
+	xwrite(buf, 8);
 }
 
-static int escape_seq(void)
+static void raw_clearbuf_seq(void)
 {
-	u8 rcv, after;
+	const u8 buf[4] = {0x0d, 0x0d, 0x0d, 0x0d};
 
-	printf("Sending escape sequence, please power up the device\n\n");
+	xwrite(buf, 4);
+	tcdrain(wtpfd);
+}
 
-	do {
-		raw_escape_seq();
+/*
+ * Determine whether we have BootROM console (ECHO is active) and should send
+ * "wtp" command.
+ * If ECHO is active, the escape seq we sent previously should return back, but
+ * first two chars (0xbb and 0x11) will return as '>'.
+ */
+static int detect_echo_escape_seq(void)
+{
+	const u8 chk[8] = {'>', '>', 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+	static u8 buf[4096];
+	int i, ret;
 
-		if (!detect_char(&rcv))
-			continue;
+	ret = xread_timeout(buf, sizeof(buf), 50);
+	if ((ret == 7 && !memcmp(buf + 1, chk + 1, 7)) ||
+	    (ret >= 8 && ret < sizeof(buf) && !memcmp(buf + ret - 8, chk, 8))) {
+		if (!detect_char(&buf[ret++], 1000))
+			return 1;
+	}
 
-		switch (rcv) {
-		case 0x00:
-			printf("\e[1KReceived NAK, try restarting again\r");
-			break;
-		case 0xff:
-			printf("\e[1KReceived all ones byte\r");
-			break;
-		case 0x3e:
-			printf("\nReceived ACK\n");
-			break;
-		default:
-			printf("\e[1KInvalid reply to escape sequence 0x%02x, try restarting again\r",
-			       rcv);
-		}
-	} while (rcv != 0x3e);
-
-	raw_escape_seq();
-
-	sleep(2);
-	tcflush(wtpfd, TCIOFLUSH);
-
-	xwrite("\r\r\r\r", 4);
-
-	eat_zeros(&after);
-	if (after == '\r') {
-		sleep(1);
-		tcflush(wtpfd, TCIOFLUSH);
-		return 1;
+	if (ret < sizeof(buf)) {
+		for (i = 0; i < ret; i++)
+			ioctl(wtpfd, TIOCSTI, &buf[i]);
 	}
 
 	return 0;
+}
+
+void escape_seq(void)
+{
+	u8 rcv, state;
+	u8 buf[8];
+	int ret;
+
+	state = 0;
+	tcflush(wtpfd, TCIOFLUSH);
+	printf("Sending escape sequence, please power up the device\n");
+
+	while (1) {
+		switch (state) {
+		case 0:
+			raw_escape_seq();
+			ret = detect_char(&rcv, 0);
+			break;
+		case 1:
+			raw_escape_seq();
+			usleep(500);
+			ret = eat_zeros_and_detect_char(&rcv, 1000);
+			break;
+		default:
+			ret = detect_char(&rcv, 1000);
+			break;
+		}
+
+		if (!ret && state == 2) {
+			printf("\e[0KInitialized UART download mode\n\n");
+			return;
+		}
+
+		if (!ret)
+			continue;
+
+		switch (state) {
+		case 0:
+			if (rcv == 0x3e) {
+				if (detect_echo_escape_seq()) {
+					printf("\e[0KDetected UART command prompt\n");
+					xwrite("\x03wtp\r", 5);
+					xread(buf, 8);
+					if (memcmp(buf, "!\r\nwtp\r\n", 8) == 0) {
+						printf("Initialized UART download mode\n\n");
+						return;
+					}
+					printf("Invalid reply for command wtp, try restarting again\r");
+					fflush(stdout);
+					state = 0;
+				} else {
+					printf("\e[0KReceived sync reply\n");
+					printf("Sending escape sequence with delay\n");
+					state = 1;
+				}
+			} else {
+				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", rcv);
+				fflush(stdout);
+				if (ioctl(wtpfd, TIOCINQ, &ret) == 0 && ret > 100)
+					tcflush(wtpfd, TCIFLUSH);
+			}
+			break;
+		case 1:
+			if (rcv == 0x00) {
+				printf("\e[0KReceived ack reply\n");
+				printf("Sending clearbuf sequence\n");
+				raw_clearbuf_seq();
+				state = 2;
+			} else {
+				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", rcv);
+				fflush(stdout);
+				state = 0;
+			}
+			break;
+		case 2:
+			if (rcv != 0x00) {
+				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", rcv);
+				fflush(stdout);
+				state = 0;
+			}
+			break;
+		}
+	}
 }
 
 void setwtpfd(const char *fdstr)
@@ -215,27 +281,6 @@ void openwtp(const char *path)
 
 	ioctl(wtpfd, TCSETS2, &opts);
 	tcflush(wtpfd, TCIFLUSH);
-}
-
-static void start_wtp(void)
-{
-	u8 buf[5];
-
-	xwrite("wtp\r", 4);
-	xread(buf, 5);
-	if (memcmp(buf, "wtp\r\n", 5))
-		die("Wrong reply: \"%.*s\"", 5, buf);
-}
-
-void initwtp(int send_escape)
-{
-	int prompt = 1;
-
-	if (send_escape)
-		prompt = escape_seq();
-
-	if (prompt)
-		start_wtp();
 }
 
 void closewtp(void)

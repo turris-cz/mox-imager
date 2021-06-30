@@ -352,7 +352,7 @@ static void help(void)
 		"  -D, --device=TTY                            upload images via UART to TTY\n"
 		"  -b, --baudrate=BAUD                         fast upload mode by switching to baudrate BAUD, if supported by image\n"
 		"  -F, --fd=FD                                 TTY file descriptor\n"
-		"  -E, --send-escape-sequence                  send escape sequence to force UART mode\n"
+		"  -E, --send-escape-sequence                  send escape sequence to force UART mode and start WTP protocol\n"
 		"  -t, --terminal                              run mini terminal after images are sent\n"
 		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
 		"  -k, --key=KEY                               read ECDSA-521 private key from file KEY\n"
@@ -689,8 +689,8 @@ int main(int argc, char **argv)
 		else
 			openwtp(tty);
 
-		if (images_given || send_escape)
-			initwtp(send_escape);
+		if (send_escape)
+			escape_seq();
 
 		nimages_all = nimages;
 		if (timn)
