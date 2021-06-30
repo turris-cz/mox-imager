@@ -138,7 +138,8 @@ static int escape_seq(void)
 			printf("\nReceived ACK\n");
 			break;
 		default:
-			die("\nInvalid reply to escape sequence: 0x%02x\n", rcv);
+			printf("\e[1KInvalid reply to escape sequence 0x%02x, try restarting again\r",
+			       rcv);
 		}
 	} while (rcv != 0x3e);
 
