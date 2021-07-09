@@ -367,7 +367,7 @@ static int assemble_insn(u32 *out, const char *cmd, const char *file, int line)
 	if (arg < insn->args + 1)
 		die("Too few arguments (%i < %i) in command \"%s\" (%s:%i)", arg - 1, insn->args, cmd, file, line);
 
-	if (*p != '\0' & *p != '\n')
+	if (*p != '\0' && *p != '\n')
 		die("Unrecognized token in command \"%s\" (%s:%i)", cmd, file, line);
 
 	return arg;
