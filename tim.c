@@ -17,6 +17,10 @@
 #include "images.h"
 #include "instr.h"
 
+#if defined(__GNUC__) && (__GNUC__ >= 10)
+#pragma GCC diagnostic ignored "-Wzero-length-bounds"
+#endif
+
 static void tim_add_cidp_pkg(image_t *tim, const char *consumer, int npkgs,
 			     ...);
 static void tim_add_gpp_pkg(image_t *tim, const char *name, void *code,
