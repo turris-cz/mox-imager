@@ -143,6 +143,10 @@ static int detect_echo_escape_seq(void)
 	return 0;
 }
 
+/*
+ * This works when escape sequence is needed to force UART mode but also when
+ * BootROM console is enabled and "wtp" command is needed.
+ */
 void escape_seq(void)
 {
 	u8 rcv, state;
