@@ -16,38 +16,44 @@ Other features:
 
 Can upload images as `WtpDownloader`
 ```
-mox-imager -D /dev/ttyUSB0 -E .../uart-images/{TIM_ATF.bin,wtmi_h.bin,boot-image_h.bin}
+mox-imager -D /dev/ttyUSB0 .../uart-images/{TIM_ATF.bin,wtmi_h.bin,boot-image_h.bin}
 ```
 
 But can also upload `flash-image.bin` over UART
 ```
-mox-imager -D /dev/ttyUSB0 -E .../flash-image.bin
+mox-imager -D /dev/ttyUSB0 .../flash-image.bin
 ```
 
 And can also upload firmware in separate images
 ```
-mox-imager -D /dev/ttyUSB0 -E .../trusted-secure-firmware-uart.bin .../a53-firmware.bin
+mox-imager -D /dev/ttyUSB0 .../trusted-secure-firmware-uart.bin .../a53-firmware.bin
+```
+
+### Send escape sequence before uploading (to force boot from UART)
+
+```
+mox-imager -D /dev/ttyUSB0 -E .../flash-image.bin
 ```
 
 ### Upload with higher baudrate (`-b BAUDRATE` flag)
 
 ```
-mox-imager -D /dev/ttyUSB0 -E -b 3000000 .../flash-image.bin
+mox-imager -D /dev/ttyUSB0 -b 3000000 .../flash-image.bin
 ```
 
 ### Upload and start mini-terminal after uploading (`-t` flag)
 
 ```
-mox-imager -D /dev/ttyUSB0 -E -t .../flash-image.bin
+mox-imager -D /dev/ttyUSB0 -t .../flash-image.bin
 ```
 
 ### Upload with maximal baudrate 6000000 and start mini-terminal
 
 ```
-mox-imager -D /dev/ttyUSB0 -E -b 6000000 -t .../flash-image.bin
+mox-imager -D /dev/ttyUSB0 -b 6000000 -t .../flash-image.bin
 ```
 
-### Start only mini-terminal (like minicom/kermit) without uploading
+### Only start mini-terminal (like minicom/kermit) without uploading
 
 ```
 mox-imager -D /dev/ttyUSB0 -t

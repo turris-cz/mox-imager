@@ -143,15 +143,36 @@ static int detect_echo_escape_seq(void)
 	return 0;
 }
 
+static _Bool send_wtp_cmd(void)
+{
+	u8 buf[8];
+
+	xwrite("\x03wtp\r", 5);
+	xread(buf, 8);
+
+	if (!memcmp(buf, "!\r\nwtp\r\n", 8)) {
+		printf("Initialized WTP download mode\n\n");
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
 /*
  * This works when escape sequence is needed to force UART mode but also when
  * BootROM console is enabled and "wtp" command is needed.
  */
-void escape_seq(void)
+void initwtp(int escape_seq)
 {
 	u8 rcv, state;
-	u8 buf[8];
 	int ret;
+
+	if (!escape_seq) {
+		/* only send wtp command */
+		if (!send_wtp_cmd())
+			die("Invalid reply for command wtp, try again");
+		return;
+	}
 
 	state = 0;
 	tcflush(wtpfd, TCIOFLUSH);
@@ -185,13 +206,9 @@ void escape_seq(void)
 		case 0:
 			if (rcv == 0x3e) {
 				if (detect_echo_escape_seq()) {
-					printf("\e[0KDetected UART command prompt\n");
-					xwrite("\x03wtp\r", 5);
-					xread(buf, 8);
-					if (memcmp(buf, "!\r\nwtp\r\n", 8) == 0) {
-						printf("Initialized UART download mode\n\n");
+					printf("\e[0KDetected BootROM command prompt\n");
+					if (send_wtp_cmd())
 						return;
-					}
 					printf("Invalid reply for command wtp, try restarting again\r");
 					fflush(stdout);
 					state = 0;

@@ -21,7 +21,7 @@ typedef struct {
 
 extern void setwtpfd(const char *fdstr);
 extern void openwtp(const char *path);
-extern void escape_seq(void);
+extern void initwtp(int escape_seq);
 extern void closewtp(void);
 extern void change_baudrate(int baudrate);
 extern void try_change_baudrate(int baudrate);
