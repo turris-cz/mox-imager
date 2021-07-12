@@ -45,7 +45,7 @@ static size_t xread_timeout(void *buf, size_t size, int timeout)
 		res = poll(&pfd, 1, timeout);
 		if (res < 0)
 			die("Cannot poll: %m\n");
-		else if (res == 0)
+		else if (!res)
 			break;
 
 		res = read(wtpfd, buf + rd, size - rd);
@@ -220,7 +220,7 @@ void initwtp(int escape_seq)
 			} else {
 				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", rcv);
 				fflush(stdout);
-				if (ioctl(wtpfd, TIOCINQ, &ret) == 0 && ret > 100)
+				if (!ioctl(wtpfd, TIOCINQ, &ret) && ret > 100)
 					tcflush(wtpfd, TCIFLUSH);
 			}
 			break;
