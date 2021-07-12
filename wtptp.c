@@ -125,7 +125,7 @@ static void raw_clearbuf_seq(void)
 static int detect_echo_escape_seq(void)
 {
 	const u8 chk[8] = {'>', '>', 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-	static u8 buf[4096];
+	static u8 buf[8192];
 	size_t ret, i;
 
 	ret = xread_timeout(buf, sizeof(buf), 50);
