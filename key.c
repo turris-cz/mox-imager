@@ -186,7 +186,7 @@ void save_key(const char *path, const EC_KEY *key)
 	wr = write(fd, priv, strlen(priv));
 	if (wr < 0)
 		die("Cannot write key file %s: %m", path);
-	else if (wr != strlen(priv))
+	else if ((size_t)wr != strlen(priv))
 		die("Cannot write whole key file %s", path);
 
 	close(fd);

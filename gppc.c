@@ -8,7 +8,7 @@
 #include <getopt.h>
 #include "instr.h"
 
-static void usage(FILE *fp, int ec)
+static void __attribute__((noreturn)) usage(FILE *fp, int ec)
 {
 	fprintf(fp, "Usage: gppc -o <output> <input>\n\n");
 	exit(ec);

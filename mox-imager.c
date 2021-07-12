@@ -267,11 +267,12 @@ static u64 mac2u64(const char *mac)
 	return res;
 }
 
-struct mox_builder_data *find_mbd(void) {
+struct mox_builder_data *find_mbd(void)
+{
 	struct mox_builder_data needle = {
 		0x05050505, htole32(0xdeaddead), 0,
 		htole32(0xdeadbeef), htole32(0xbeefdead), 0xb7b7b7b7,
-		0, 0, 0, 0, 0, 0, 0, 0
+		{ 0, 0, 0, 0, 0, 0, 0, 0 },
 	};
 	void *h, *n, *r;
 
@@ -298,7 +299,6 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 		      const char *mac_address, const char *board_version,
 		      const char *otp_hash)
 {
-	image_t *tim;
 	u64 mac, sn;
 	u32 bv;
 	char *end;
@@ -421,7 +421,6 @@ int main(int argc, char **argv)
 	       send_escape = baudrate = 0;
 
 	while (1) {
-		int optidx;
 		char c;
 
 		c = getopt_long(argc, argv, "D:b:F:Eo:k:r:Rdg:sStunh",
@@ -630,7 +629,7 @@ int main(int argc, char **argv)
 		}
 
 		timh = image_find(TIMH_ID);
-		if (tim_imap_pkg_addr(timh, name2id("CSKT")) != -1)
+		if (tim_imap_pkg_addr(timh, name2id("CSKT")) != -1U)
 			timn = image_find(TIMN_ID);
 
 		trusted = tim_is_trusted(timh);

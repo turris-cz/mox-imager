@@ -166,13 +166,9 @@ void tim_remove_image(image_t *tim, u32 id)
 static respkg_t *tim_find_pkg(image_t *tim, u32 id)
 {
 	timhdr_t *timhdr;
-	reshdr_t *reshdr;
 	respkg_t *pkg;
-	u32 pkgsize;
-	void *pkgend;
 
-	timhdr = (void *) tim->data;
-	reshdr = reserved_area(timhdr);
+	timhdr = (void *)tim->data;
 
 	for (pkg = firstpkg(timhdr); pkg; pkg = nextpkg(timhdr, pkg))
 		if (le32toh(pkg->id) == id)
@@ -184,7 +180,7 @@ static respkg_t *tim_find_pkg(image_t *tim, u32 id)
 static struct imap_map *tim_imap_pkg_find_map(image_t *tim, u32 id)
 {
 	respkg_t *pkg;
-	int i;
+	u32 i;
 
 	pkg = tim_find_pkg(tim, PKG_IMAP);
 	if (!pkg)
@@ -202,7 +198,7 @@ u32 tim_imap_pkg_addr(image_t *tim, u32 id)
 	struct imap_map *map = tim_imap_pkg_find_map(tim, id);
 
 	if (!map)
-		return -1;
+		return -1U;
 
 	return le32toh(map->flashentryaddr[0]);
 }
@@ -218,7 +214,7 @@ void tim_imap_pkg_addr_set(image_t *tim, u32 id, u32 flashentry, u32 partition)
 	map->partitionnumber = htole32(partition);
 }
 
-static void tim_remove_pkg(image_t *tim, u32 id)
+static void __attribute__((unused)) tim_remove_pkg(image_t *tim, u32 id)
 {
 	timhdr_t *timhdr;
 	reshdr_t *reshdr;
@@ -390,7 +386,7 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 
 		printf("  %s (size %u)\n", id2name(pkgid), le32toh(pkg->size));
 		if (pkgid == PKG_IMAP) {
-			int i;
+			u32 i;
 
 			for (i = 0; i < le32toh(pkg->imap.nmaps); ++i) {
 				typeof(pkg->imap.maps[0]) *map;
@@ -405,7 +401,7 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 			}
 		} else if (pkgid == PKG_CIDP) {
 			struct cidp_t *cidp = &pkg->cidp.consumers[0];
-			int i, j, n;
+			u32 i, j, n;
 
 			for (i = 0; i < le32toh(pkg->cidp.nconsumers); ++i) {
 				printf("    Consumer %s, packages:",
@@ -425,7 +421,7 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 			struct gpp_op *op = &pkg->gpp.ops[0];
 			u32 nops, ninst;
 			void *code;
-			int i, len;
+			u32 i, len;
 
 			nops = le32toh(pkg->gpp.nops);
 			ninst = le32toh(pkg->gpp.ninst);
@@ -470,7 +466,7 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 			}
 
 			if (disasm) {
-				printf("    Instructions:\n");
+				printf("    Code (%u instructions):\n", ninst);
 				disassemble("\t", code, len / 4);
 			}
 		}
@@ -493,10 +489,9 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 	start = (imginfo_t *) (timhdr + 1);
 	end = start + numimages;
 	for (i = start; i < end; ++i) {
+		u32 id, size, hashalg, sizetohash, hash[16];
 		image_t *img;
 		int nohash;
-		u32 id, size, nextid, hashid, hashalg, sizetohash;
-		u32 hash[16];
 
 		id = le32toh(i->id);
 		size = le32toh(i->size);
@@ -508,17 +503,17 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 			die("Next image ID check failed");
 
 		img = image_find(id);
-		if (img->size != size && i->sizetohash)
+		if (img->size != size && sizetohash)
 			die("Wrong length of %s image (%u, expected %u)",
 			    id2name(id), img->size, size);
 
 		nohash = !memcmp(i->hash, zerohash, sizeof(zerohash));
 
 		printf("Found %s, hash %s%s, encryption %s, size %u, load 0x%08x, flash 0x%08x\n",
-		       id2name(id), hash2name(i->hashalg),
+		       id2name(id), hash2name(hashalg),
 		       nohash ? " (hash zeroed)" : "",
 		       enc2name(le32toh(i->encalg)),
-		       le32toh(i->size), le32toh(i->loadaddr),
+		       size, le32toh(i->loadaddr),
 		       le32toh(i->flashentryaddr));
 
 		if (nohash)
@@ -529,8 +524,8 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 		else if (sizetohash > size)
 			sizetohash = size;
 
-		image_hash(i->hashalg, img->data, sizetohash, hash,
-			   id == tim->id ? (u8 *) &i->hash[0] - tim->data : -1);
+		image_hash(hashalg, img->data, sizetohash, hash,
+			   id == tim->id ? (u8 *) &i->hash[0] - tim->data : -1U);
 
 		if (memcmp(hash, i->hash, sizeof(hash)))
 			die("Hash check failed for %s", id2name(id));
@@ -626,7 +621,7 @@ void tim_rehash(image_t *tim)
 		} else {
 			img->sizetohash = htole32(image->size);
 			image_hash(le32toh(img->hashalg), image->data,
-				   image->size, img->hash, -1);
+				   image->size, img->hash, -1U);
 		}
 	}
 
@@ -702,13 +697,11 @@ void tim_add_image(image_t *tim, image_t *image, u32 after, u32 loadaddr,
 
 static void tim_add_pkgs(image_t *tim, int npkgs, void *pkgs, size_t size)
 {
-	static int alloced;
-	void *oldend;
+	u32 sizeofreserved, toadd;
 	timhdr_t *timhdr;
 	reshdr_t *reshdr;
 	respkg_t *pkg;
-	u32 sizeofreserved, toadd;
-	int i;
+	void *oldend;
 
 	timhdr = (timhdr_t *) tim->data;
 	reshdr = reserved_area(timhdr);
@@ -940,7 +933,7 @@ static void key_hash(u32 alg, u32 *hash, const u32 *x, const u32 *y, int pad)
 	memcpy(&buf[1], x, 68);
 	memcpy(&buf[18], y, 68);
 
-	image_hash(alg, buf, pad ? sizeof(buf) : 140, hash, -1);
+	image_hash(alg, buf, pad ? sizeof(buf) : 140, hash, -1U);
 }
 
 void tim_add_key(image_t *tim, u32 id, EC_KEY *key)
@@ -1016,7 +1009,7 @@ void tim_sign(image_t *tim, EC_KEY *key)
 	key_get_tim_coords(key, platds->ECDSA.pub.x, platds->ECDSA.pub.y);
 
 	image_hash(HASH_SHA256, tim->data, (u8 *) &platds->ECDSA.sig - tim->data,
-		   hash, -1);
+		   hash, -1U);
 
 	sig = ECDSA_do_sign((void *) hash, 32, key);
 	if (!sig)

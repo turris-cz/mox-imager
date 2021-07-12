@@ -30,9 +30,10 @@ static inline int tcflush(int fd, int q)
 	return ioctl(fd, TCFLSH, q);
 }
 
-static int xread_timeout(void *buf, size_t size, int timeout)
+static size_t xread_timeout(void *buf, size_t size, int timeout)
 {
-	ssize_t rd, res;
+	ssize_t res;
+	size_t rd;
 	struct pollfd pfd;
 
 	pfd.fd = wtpfd;
@@ -69,7 +70,7 @@ static void xwrite(const void *buf, size_t size)
 	res = write(wtpfd, buf, size);
 	if (res < 0)
 		die("Cannot write %zu bytes: %m", size);
-	else if (res < size)
+	else if ((size_t)res < size)
 		die("Cannot write %zu bytes: written only %zi", size, res);
 }
 
@@ -88,7 +89,6 @@ static int detect_char(u8 *c, int timeout)
 
 static int eat_zeros_and_detect_char(u8 *c, int timeout)
 {
-	u8 rcv;
 	int i;
 
 	for (i = 0; i < 256; i++) {
@@ -126,7 +126,7 @@ static int detect_echo_escape_seq(void)
 {
 	const u8 chk[8] = {'>', '>', 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
 	static u8 buf[4096];
-	int i, ret;
+	size_t ret, i;
 
 	ret = xread_timeout(buf, sizeof(buf), 50);
 	if ((ret == 7 && !memcmp(buf + 1, chk + 1, 7)) ||
@@ -298,8 +298,9 @@ void closewtp(void)
  */
 static int read_until(const u8 *until, size_t ulen, size_t max)
 {
-	int i, pos, printed = 0, istty;
+	size_t i, pos, printed = 0;
 	u8 buf[ulen], last;
+	int istty;
 
 	istty = isatty(STDOUT_FILENO);
 
@@ -312,7 +313,7 @@ static int read_until(const u8 *until, size_t ulen, size_t max)
 			if (istty) {
 				if (!printed)
 					printf("\033[33;1m");
-				printf("%.*s", pos + 1, (char *)buf);
+				printf("%.*s", (int)pos + 1, (char *)buf);
 				printed += pos + 1;
 				last = buf[pos];
 			}
@@ -346,7 +347,7 @@ static int compute_best_uart_params(u32 clk, u32 desired_baud, u32 *div, u32 *m)
 	u8 m1, m2, m3, m4, best_m1, best_m2, best_m3, best_m4;
 	u64 ticks, ratio, err, best_err = -1ULL;
 	u32 d, d_max, best_d;
-	_Bool eq, best_eq;
+	_Bool eq, best_eq = 0;
 	/*
 	 * We are using fixed-point arithmetic to compute best possible
 	 * parameters. We need to know the maximum possible parameter value for
@@ -452,10 +453,9 @@ void change_baudrate(int baudrate)
 
 void try_change_baudrate(int baudrate)
 {
-	struct termios2 opts;
+	u8 buf[6] = "baud";
 	int tbg_freq;
 	u32 div, m;
-	u8 buf[6] = "baud";
 
 	printf("Requesting baudrate change to %i baud\n", baudrate);
 
@@ -611,7 +611,7 @@ void sendimage(image_t *img, int fast)
 	static int seq = 1;
 	resp_t resp;
 	u8 buf[4];
-	u32 sent;
+	u32 sent, tosend = 0;
 	double start;
 	int diff;
 	int istty = isatty(STDOUT_FILENO);
@@ -622,7 +622,6 @@ void sendimage(image_t *img, int fast)
 	start = now();
 	sent = 0;
 	while (sent < img->size) {
-		u32 tosend;
 		int eta;
 
 		if ((fast && !sent) || !fast) {
@@ -728,7 +727,7 @@ void uart_otp_read(void)
 
 		eccread(buf, 19);
 
-		val = strtoull(buf + 2, &end, 16);
+		val = strtoull((char *)buf + 2, &end, 16);
 
 		if ((buf[0] != '0' && buf[0] != '1') || buf[1] != ' '
 		    || buf[18] != '\n' || (u8 *) end != &buf[18])
@@ -768,7 +767,7 @@ void uart_deploy(void)
 
 	eccread(buf, 2);
 	buf[2] = '\0';
-	printf("Board version: %lu\n", strtol(buf, NULL, 16));
+	printf("Board version: %lu\n", strtol((char *)buf, NULL, 16));
 
 	eccread(buf, 4);
 	if (memcmp(buf, "MACA", 4))

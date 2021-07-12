@@ -41,7 +41,7 @@ void image_hash(u32 alg, void *buf, size_t size, void *out, u32 hashaddr)
 		SHA256_CTX ctx;
 
 		SHA256_Init(&ctx);
-		if (hashaddr != -1) {
+		if (hashaddr != -1U) {
 			SHA256_Update(&ctx, buf, hashaddr);
 			SHA256_Update(&ctx, zeros, 64);
 			SHA256_Update(&ctx, buf + hashaddr + 64,
@@ -54,7 +54,7 @@ void image_hash(u32 alg, void *buf, size_t size, void *out, u32 hashaddr)
 		SHA512_CTX ctx;
 
 		SHA512_Init(&ctx);
-		if (hashaddr != -1) {
+		if (hashaddr != -1U) {
 			SHA512_Update(&ctx, buf, hashaddr);
 			SHA512_Update(&ctx, zeros, 64);
 			SHA512_Update(&ctx, buf + hashaddr + 64,
@@ -153,7 +153,7 @@ static int do_load(void *data, size_t data_size, u32 hdr_addr)
 		}
 
 		cskt_addr = tim_imap_pkg_addr(tim, name2id("CSKT"));
-		if (cskt_addr != -1 && cskt_addr < data_size)
+		if (cskt_addr != -1U && cskt_addr < data_size)
 			f += do_load(data, data_size, cskt_addr);
 
 		if (do_rehash)
@@ -161,6 +161,8 @@ static int do_load(void *data, size_t data_size, u32 hdr_addr)
 
 		if (!f && !hdr_addr)
 			munmap(data, data_size);
+
+		return f;
 	} else {
 		image_new(data + 4, data_size - 4, le32toh(*(u32 *) data));
 		return 1;
