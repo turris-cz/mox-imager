@@ -3,6 +3,7 @@
 Features over Marvell's original `WtpDownloader`:
 * can upload firmware over UART faster (with baudrates up to 6 MBaud)
 * can upload `flash-image.bin` over UART (the code changes the SPI bootflashsign to UART)
+* can upload firmware over UART in separate images without headers (filename arguments must be supplied in correct order)
 * mini-terminal (implementation from U-Boot's `kwboot`)
 
 Other features:
@@ -21,6 +22,11 @@ mox-imager -D /dev/ttyUSB0 -E .../uart-images/{TIM_ATF.bin,wtmi_h.bin,boot-image
 But can also upload `flash-image.bin` over UART
 ```
 mox-imager -D /dev/ttyUSB0 -E .../flash-image.bin
+```
+
+And can also upload firmware in separate images
+```
+mox-imager -D /dev/ttyUSB0 -E .../trusted-secure-firmware-uart.bin .../a53-firmware.bin
 ```
 
 ### Upload with higher baudrate (`-b BAUDRATE` flag)

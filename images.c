@@ -72,6 +72,9 @@ image_t *image_new(void *data, u32 size, u32 id)
 {
 	int i;
 
+	if (!is_id_valid(id))
+		die("Invalid image file");
+
 	for (i = 0; i < 32; ++i)
 		if (images[i].id == id)
 			die("More than one %s image", id2name(id));
@@ -106,6 +109,8 @@ void image_delete_all(void)
 
 static int do_load(void *data, size_t data_size, u32 hdr_addr)
 {
+	static u32 wait_ids[32];
+
 	if (!memcmp(data + hdr_addr + 4, "HMIT", 4) ||
 	    !memcmp(data + hdr_addr + 4, "NMIT", 4)) {
 		timhdr_t *timhdr;
@@ -113,7 +118,7 @@ static int do_load(void *data, size_t data_size, u32 hdr_addr)
 		void *timdata;
 		size_t timsize;
 		u32 cskt_addr;
-		int i, f, do_rehash = 0;
+		int i, j, f, do_rehash = 0;
 
 		timhdr = data + hdr_addr;
 		timsize = tim_size(timhdr);
@@ -126,29 +131,57 @@ static int do_load(void *data, size_t data_size, u32 hdr_addr)
 		f = 0;
 		for (i = 0; i < tim_nimages(timhdr); ++i) {
 			imginfo_t *img = tim_image(timhdr, i);
-			u32 entry, size;
+			u32 entry, size, id;
 
 			if (!img)
 				break;
 
+			id = le32toh(img->id);
 			entry = le32toh(img->flashentryaddr);
 			size = le32toh(img->size);
 
 			if (img->id == timhdr->identifier)
 				continue;
 
-			if (data_size < entry)
-				continue;
+			/*
+			 * If image entry is outside of the current file then
+			 * wait for the image in another file.
+			 */
+			if (data_size <= entry) {
+				if (!is_id_valid(id))
+					die("Invalid image id");
 
+				for (j = 0; j < 32; ++j)
+					if (!wait_ids[j])
+						break;
+
+				if (j == 32)
+					die("Too many images");
+
+				wait_ids[j] = id;
+				continue;
+			}
+
+			/*
+			 * If image entry is inside of the current file but
+			 * end of image is outside, then change the size, but
+			 * only if the image is to be hashed. This is to avoid
+			 * changing TIM in case it is signed. If the image is
+			 * to be hashed and the size is incorrect, the hash,
+			 * which is inside the TIM, will need to change anyway,
+			 * and it that case the potential signature will be
+			 * invalidated.
+			 */
 			if (data_size < entry + size) {
 				size = data_size - entry;
 				if (img->sizetohash) {
 					img->size = htole32(size);
+					img->sizetohash = htole32(size);
 					do_rehash = 1;
 				}
 			}
 
-			image_new(data + entry, size, le32toh(img->id));
+			image_new(data + entry, size, id);
 			++f;
 		}
 
@@ -164,7 +197,33 @@ static int do_load(void *data, size_t data_size, u32 hdr_addr)
 
 		return f;
 	} else {
-		image_new(data + 4, data_size - 4, le32toh(*(u32 *) data));
+		u32 id;
+		int i;
+
+		if (data_size > 4 && is_id_valid(le32toh(*(u32 *) data))) {
+			id = le32toh(*(u32 *) data);
+			data += 4;
+			data_size -= 4;
+			for (i = 0; i < 32; ++i) {
+				if (wait_ids[i] == id) {
+					wait_ids[i] = 0;
+					break;
+				}
+			}
+		} else {
+			for (i = 0; i < 32; ++i)
+				if (wait_ids[i])
+					break;
+
+			if (i == 32)
+				die("Invalid image file");
+
+			id = wait_ids[i];
+			wait_ids[i] = 0;
+		}
+
+		image_new(data, data_size, id);
+
 		return 1;
 	}
 }

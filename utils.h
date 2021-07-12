@@ -35,4 +35,16 @@ static inline const char *id2name(u32 type)
 	return (const char *) name;
 }
 
+static inline _Bool is_id_valid(u32 id)
+{
+	const char *name = id2name(id);
+	int i;
+
+	for (i = 0; i < 4; ++i)
+		if (name[i] < 'A' || name[i] > 'Z')
+			return 0;
+
+	return 1;
+}
+
 #endif /* _UTILS_H_ */
