@@ -410,8 +410,8 @@ int main(int argc, char **argv)
 	int sign, hash_a53_firmware, no_a53_firmware, otp_read, deploy,
 	    get_otp_hash, create_trusted_image, create_untrusted_image,
 	    send_escape, baudrate;
-	u32 image_bootfs, partition;
-	image_t *timh, *timn = NULL;
+	u32 image_bootfs = 0, partition;
+	image_t *timh = NULL, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
 
 	tty = fdstr = output = keyfile = seed = genkey = serial_number =
