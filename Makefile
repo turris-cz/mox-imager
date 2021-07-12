@@ -3,7 +3,7 @@
 WTMI_PATH := ../wtmi
 
 CC := gcc
-CFLAGS := -O2 -Wall
+CFLAGS := -O2 -Wall -Wno-zero-length-bounds
 ifeq ($(STATIC_LIBCRYPTO), 1)
 	LDFLAGS_LIBCRYPTO := -l:libcrypto.a -ldl -pthread
 else
