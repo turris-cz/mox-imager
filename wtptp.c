@@ -130,15 +130,13 @@ static int detect_echo_escape_seq(void)
 
 	buf[0] = '>';
 	ret = 1 + xread_timeout(buf + 1, sizeof(buf) - 1, 50);
-	if (ret >= 8 && ret < sizeof(buf) && !memcmp(buf + ret - 8, chk, 8)) {
+	if (ret >= 8 && ret < sizeof(buf) && !memcmp(buf + ret - 8, chk, 8))
 		if (!detect_char(&buf[ret++], 100))
 			return 1;
-	}
 
-	if (ret < sizeof(buf)) {
+	if (ret < sizeof(buf))
 		for (i = 0; i < ret; i++)
 			ioctl(wtpfd, TIOCSTI, &buf[i]);
-	}
 
 	return 0;
 }
