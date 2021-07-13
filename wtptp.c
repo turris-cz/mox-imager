@@ -131,7 +131,7 @@ static int detect_echo_escape_seq(void)
 	buf[0] = '>';
 	ret = 1 + xread_timeout(buf + 1, sizeof(buf) - 1, 50);
 	if (ret >= 8 && ret < sizeof(buf) && !memcmp(buf + ret - 8, chk, 8)) {
-		if (!detect_char(&buf[ret++], 1000))
+		if (!detect_char(&buf[ret++], 100))
 			return 1;
 	}
 
