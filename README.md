@@ -14,17 +14,22 @@ Other features:
 
 ### Upload firmware over UART
 
-Can upload images as `WtpDownloader`
+Can upload unsigned images as `WtpDownloader`
 ```
 mox-imager -D /dev/ttyUSB0 .../uart-images/{TIM_ATF.bin,wtmi_h.bin,boot-image_h.bin}
 ```
 
-But can also upload `flash-image.bin` over UART
+Can upload signed images as `WtpDownloader`
+```
+mox-imager -D /dev/ttyUSB0 -E .../uart-images/{TIM_ATF_TRUSTED.bin,TIMN_ATF_TRUSTED.bin,wtmi_h.bin,boot-image_h.bin}
+```
+
+But can also upload unsigned `flash-image.bin` over UART
 ```
 mox-imager -D /dev/ttyUSB0 .../flash-image.bin
 ```
 
-And can also upload firmware in separate images
+And can also upload signed firmware in separate images
 ```
 mox-imager -D /dev/ttyUSB0 .../trusted-secure-firmware-uart.bin .../a53-firmware.bin
 ```
