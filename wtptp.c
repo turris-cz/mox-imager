@@ -292,7 +292,7 @@ void openwtp(const char *path)
 	opts.c_cflag |= B115200;
 	opts.c_cc[VMIN] = 1;
 	opts.c_cc[VTIME] = 10;
-	opts.c_iflag = 0;
+	opts.c_iflag = IGNBRK;
 	opts.c_lflag = 0;
 	opts.c_oflag = 0;
 	opts.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
