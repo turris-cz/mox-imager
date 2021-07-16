@@ -1,7 +1,8 @@
 #define DEFRET(dest)        TEST_SM_AND_BRANCH SM15 0xffffffff LBL##dest == dest
 #define CALL(label,retlabel)    LOAD_SM_VAL SM15 LBL##retlabel & BRANCH label & LABEL retlabel
+#define RET RETu
 
-BRANCH STRT
+BRANCH STRu
 LABEL RET
 DEFRET(Ru_1)
 DEFRET(Ru_2)
@@ -11,12 +12,12 @@ DEFRET(Ru_5)
 DEFRET(Ru_6)
 DEFRET(Ru_7)
 DEFRET(Ru_8)
-BRANCH FAIL
+BRANCH FAIu
 
 #include "uart_helpers.gpp.inc"
 
-LABEL STRT
+LABEL STRu
 
 #include "uart_baudrate_change.gpp.inc"
 
-LABEL FAIL
+LABEL FAIu
