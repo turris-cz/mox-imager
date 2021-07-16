@@ -3,7 +3,7 @@
 #define UART_CTRL	0xC0012008
 #define UART_STS	0xC001200C
 #define UART_CLK_CTRL	0xC0012010
-#define UART_SAMPLER	 0xC0012014
+#define UART_SAMPLER	0xC0012014
 
 ; serialize 4 bytes stored in 4 u32s starting at address SM0
 ; into one u32, returned in SM0
