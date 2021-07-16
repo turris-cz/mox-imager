@@ -31,7 +31,7 @@ BRANCH FAIL
 #include "ddr4.gpp.inc"
 #include "efuse.gpp.inc"
 #ifdef SUPPORT_UART_BAUDRATE_CHANGE
-#include "uart.gpp.inc"
+#include "uart_helpers.gpp.inc"
 #endif
 
 #define branch_if_addrs_dont_mask(addr1,addr2,label)	\
