@@ -297,6 +297,7 @@ const size_t minimal_tim_size = 200;
 #include "gpp/gpp1.c"
 #include "gpp/gpp1_trusted.c"
 #include "gpp/gpp2.c"
+#include "gpp/gpp2_uart_baudrate_change_back.c"
 #include "gpp/ddr.c"
 #include "gpp/ddr_uart.c"
 
@@ -340,8 +341,13 @@ void tim_minimal_image(image_t *tim, int trusted, u32 id, int support_fastmode)
 		tim_add_gpp_pkg(tim, "GPP1", GPP_gpp1, GPP_gpp1_size,
 				0, 0, 0, 0, 0, 1, 0);
 
-	tim_add_gpp_pkg(tim, "GPP2", GPP_gpp2, GPP_gpp2_size,
-			0, 0, 0, 0, 0, 1, 0);
+	if (support_fastmode)
+		tim_add_gpp_pkg(tim, "GPP2", GPP_gpp2_uart_baudrate_change_back,
+				GPP_gpp2_uart_baudrate_change_back_size, 0, 0, 0,
+				0, 0, 1, 0);
+	else
+		tim_add_gpp_pkg(tim, "GPP2", GPP_gpp2, GPP_gpp2_size,
+				0, 0, 0, 0, 0, 1, 0);
 
 	if (support_fastmode)
 		tim_add_gpp_pkg(tim, "DDR3", GPP_ddr_uart, GPP_ddr_uart_size,
@@ -847,12 +853,15 @@ static void tim_append_gpp_code(image_t *tim, const char *name, void *code,
 }
 
 #include "gpp/uart_baudrate_change.c"
+#include "gpp/uart_baudrate_change_back.c"
 
 void tim_inject_baudrate_change_support(image_t *tim)
 {
-	printf("Injecting baudrate change code into DDR3 GPP package\n\n");
+	printf("Injecting baudrate change code into GPP packages\n\n");
 	tim_append_gpp_code(tim, "DDR3", GPP_uart_baudrate_change,
 			    GPP_uart_baudrate_change_size);
+	tim_append_gpp_code(tim, "GPP2", GPP_uart_baudrate_change_back,
+			    GPP_uart_baudrate_change_back_size);
 }
 
 static void tim_add_gpp_pkg(image_t *tim, const char *name, void *code,
