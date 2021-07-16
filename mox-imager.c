@@ -208,7 +208,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 	memset(buf, 0, MOX_U_BOOT_OFFSET);
 
 	timh = image_new(NULL, 0, TIMH_ID);
-	tim_minimal_image(timh, 0, TIMH_ID, 1);
+	tim_minimal_image(timh, 0, TIMH_ID, 0);
 	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
 	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
 		      partition, 0);
