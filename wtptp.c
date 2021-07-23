@@ -254,33 +254,13 @@ void setwtpfd(const char *fdstr)
 		die("Wrong file descriptor %s", fdstr);
 }
 
-static void reset_clocal(const char *path)
-{
-	struct termios2 opts;
-	int fd;
-
-	fd = open(path, O_RDONLY | O_NONBLOCK | O_NOCTTY);
-	if (fd < 0)
-		die("Cannot open %s: %m", path);
-
-	memset(&opts, 0, sizeof(opts));
-	ioctl(fd, TCGETS2, &opts);
-
-	opts.c_cflag |= CLOCAL;
-
-	ioctl(fd, TCSETS2, &opts);
-
-	close(fd);
-}
-
 void openwtp(const char *path)
 {
 	struct termios2 opts;
+	int flags;
 
-	/* to avoid hangs */
-	reset_clocal(path);
-
-	wtpfd = open(path, O_RDWR | O_NOCTTY);
+	/* O_NONBLOCK is required to avoid hangs when CLOCAL is not set */
+	wtpfd = open(path, O_RDWR | O_NONBLOCK | O_NOCTTY);
 
 	if (wtpfd < 0)
 		die("Cannot open %s: %m", path);
@@ -300,6 +280,14 @@ void openwtp(const char *path)
 
 	ioctl(wtpfd, TCSETS2, &opts);
 	tcflush(wtpfd, TCIFLUSH);
+
+	flags = fcntl(wtpfd, F_GETFL);
+	if (flags < 0)
+		die("Failure getting file descriptor flags: %m");
+
+	/* unset O_NONBLOCK */
+	if (fcntl(wtpfd, F_SETFL, flags & ~O_NONBLOCK))
+		die("Unsetting O_NONBLOCK failed: %m");
 }
 
 void closewtp(void)
