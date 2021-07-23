@@ -293,6 +293,7 @@ void openwtp(const char *path)
 void closewtp(void)
 {
 	close(wtpfd);
+	wtpfd = -1;
 }
 
 /*
