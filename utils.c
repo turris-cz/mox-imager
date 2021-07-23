@@ -26,8 +26,10 @@ __attribute__((noreturn)) void die(const char *fmt, ...)
 
 	fprintf(stderr, "\n\n");
 
-	if (terminal_on_exit)
+	if (terminal_on_exit) {
+		terminal_on_exit = 0;
 		uart_terminal();
+	}
 
 	exit(EXIT_FAILURE);
 }
