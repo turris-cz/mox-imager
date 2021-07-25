@@ -160,7 +160,8 @@ static int detect_echo_escape_seq(void)
 
 	if (ret < sizeof(buf))
 		for (i = 0; i < ret; i++)
-			ioctl(wtpfd, TIOCSTI, &buf[i]);
+			if (ioctl(wtpfd, TIOCSTI, &buf[i]) < 0)
+				die("Cannot insert to input queue: %m");
 
 	return 0;
 }
