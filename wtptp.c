@@ -25,9 +25,10 @@ static inline int tcdrain(int fd)
 	return ioctl(fd, TCSBRK, 1);
 }
 
-static inline int tcflush(int fd, int q)
+static inline void xtcflush(int fd, int q)
 {
-	return ioctl(fd, TCFLSH, q);
+	if (ioctl(fd, TCFLSH, q) < 0)
+		die("Cannot tcflush: %m");
 }
 
 static inline void xtcgetattr2(int fd, struct termios2 *t)
@@ -195,7 +196,7 @@ void initwtp(int escape_seq)
 	}
 
 	state = 0;
-	tcflush(wtpfd, TCIOFLUSH);
+	xtcflush(wtpfd, TCIOFLUSH);
 	printf("Sending escape sequence, please power up the device\n");
 
 	while (1) {
@@ -241,7 +242,7 @@ void initwtp(int escape_seq)
 				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", rcv);
 				fflush(stdout);
 				if (!ioctl(wtpfd, TIOCINQ, &ret) && ret > 100)
-					tcflush(wtpfd, TCIFLUSH);
+					xtcflush(wtpfd, TCIFLUSH);
 			}
 			break;
 		case 1:
@@ -301,7 +302,7 @@ void openwtp(const char *path)
 	opts.c_cflag |= CS8 | CREAD | CLOCAL;
 
 	xtcsetattr2(wtpfd, &opts);
-	tcflush(wtpfd, TCIFLUSH);
+	xtcflush(wtpfd, TCIFLUSH);
 
 	flags = fcntl(wtpfd, F_GETFL);
 	if (flags < 0)
@@ -478,7 +479,7 @@ void change_baudrate(int baudrate)
 	opts.c_ispeed = opts.c_ospeed = baudrate;
 	xtcsetattr2(wtpfd, &opts);
 	usleep(10000);
-	tcflush(wtpfd, TCIFLUSH);
+	xtcflush(wtpfd, TCIFLUSH);
 }
 
 void try_change_baudrate(int baudrate)
