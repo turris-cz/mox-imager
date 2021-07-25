@@ -243,7 +243,9 @@ void initwtp(int escape_seq)
 			} else {
 				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", rcv);
 				fflush(stdout);
-				if (!ioctl(wtpfd, TIOCINQ, &ret) && ret > 100)
+				if (ioctl(wtpfd, TIOCINQ, &ret) < 0)
+					die("Cannot get input buffer size: %m");
+				if (ret > 100)
 					xtcflush(wtpfd, TCIFLUSH);
 			}
 			break;
