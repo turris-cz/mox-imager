@@ -36,6 +36,12 @@ static inline void xtcgetattr2(int fd, struct termios2 *t)
 		die("Failed getting tty attrs: %m");
 }
 
+static inline void xtcsetattr2(int fd, const struct termios2 *t)
+{
+	if (ioctl(fd, TCSETS2, t) < 0)
+		die("Failed setting tty attrs: %m");
+}
+
 static void cfmakeraw2(struct termios2 *t)
 {
 	t->c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR |
@@ -294,7 +300,7 @@ void openwtp(const char *path)
 	opts.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
 	opts.c_cflag |= CS8 | CREAD | CLOCAL;
 
-	ioctl(wtpfd, TCSETS2, &opts);
+	xtcsetattr2(wtpfd, &opts);
 	tcflush(wtpfd, TCIFLUSH);
 
 	flags = fcntl(wtpfd, F_GETFL);
@@ -470,7 +476,7 @@ void change_baudrate(int baudrate)
 	opts.c_cflag &= ~CBAUD;
 	opts.c_cflag |= baudrate_to_cflag(baudrate);
 	opts.c_ispeed = opts.c_ospeed = baudrate;
-	ioctl(wtpfd, TCSETS2, &opts);
+	xtcsetattr2(wtpfd, &opts);
 	usleep(10000);
 	tcflush(wtpfd, TCIFLUSH);
 }
@@ -874,7 +880,7 @@ void uart_terminal(void) {
 		xtcgetattr2(in, &otio);
 		tio = otio;
 		cfmakeraw2(&tio);
-		ioctl(in, TCSETS2, &tio);
+		xtcsetattr2(in, &tio);
 		printf("\r\n[Type Ctrl-%c + %c to quit]\r\n\r\n",
 		       quit[0] | 0100, quit[1]);
 	}
@@ -910,7 +916,7 @@ void uart_terminal(void) {
 	} while (quit[s] != 0);
 
 	if (in >= 0)
-		ioctl(in, TCSETS2, &otio);
+		xtcsetattr2(in, &otio);
 
 	printf("\n");
 }
