@@ -30,6 +30,12 @@ static inline int tcflush(int fd, int q)
 	return ioctl(fd, TCFLSH, q);
 }
 
+static inline void xtcgetattr2(int fd, struct termios2 *t)
+{
+	if (ioctl(fd, TCGETS2, t) < 0)
+		die("Failed getting tty attrs: %m");
+}
+
 static void cfmakeraw2(struct termios2 *t)
 {
 	t->c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR |
@@ -276,7 +282,7 @@ void openwtp(const char *path)
 		die("Cannot open %s: %m", path);
 
 	memset(&opts, 0, sizeof(opts));
-	ioctl(wtpfd, TCGETS2, &opts);
+	xtcgetattr2(wtpfd, &opts);
 
 	opts.c_cflag &= ~CBAUD;
 	opts.c_cflag |= B115200;
@@ -460,7 +466,7 @@ void change_baudrate(int baudrate)
 {
 	struct termios2 opts = {};
 
-	ioctl(wtpfd, TCGETS2, &opts);
+	xtcgetattr2(wtpfd, &opts);
 	opts.c_cflag &= ~CBAUD;
 	opts.c_cflag |= baudrate_to_cflag(baudrate);
 	opts.c_ispeed = opts.c_ospeed = baudrate;
@@ -865,7 +871,7 @@ void uart_terminal(void) {
 
 	if (in >= 0) {
 		memset(&otio, 0, sizeof(otio));
-		ioctl(in, TCGETS2, &otio);
+		xtcgetattr2(in, &otio);
 		tio = otio;
 		cfmakeraw2(&tio);
 		ioctl(in, TCSETS2, &tio);
