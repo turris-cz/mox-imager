@@ -30,6 +30,16 @@ static inline int tcflush(int fd, int q)
 	return ioctl(fd, TCFLSH, q);
 }
 
+static void cfmakeraw2(struct termios2 *t)
+{
+	t->c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR |
+			ICRNL | IXON);
+	t->c_oflag &= ~OPOST;
+	t->c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+	t->c_cflag &= ~(CSIZE | PARENB);
+	t->c_cflag |= CS8;
+}
+
 static size_t xread_timeout(void *buf, size_t size, int timeout)
 {
 	ssize_t res;
@@ -857,13 +867,7 @@ void uart_terminal(void) {
 		memset(&otio, 0, sizeof(otio));
 		ioctl(in, TCGETS2, &otio);
 		tio = otio;
-		/* cfmakeraw */
-		tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP
-				| INLCR | IGNCR | ICRNL | IXON);
-		tio.c_oflag &= ~OPOST;
-		tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-		tio.c_cflag &= ~(CSIZE | PARENB);
-		tio.c_cflag |= CS8;
+		cfmakeraw2(&tio);
 		ioctl(in, TCSETS2, &tio);
 		printf("\r\n[Type Ctrl-%c + %c to quit]\r\n\r\n",
 		       quit[0] | 0100, quit[1]);
