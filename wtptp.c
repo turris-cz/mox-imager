@@ -20,9 +20,10 @@
 
 static int wtpfd = -1;
 
-static inline int tcdrain(int fd)
+static inline void xtcdrain(int fd)
 {
-	return ioctl(fd, TCSBRK, 1);
+	if (ioctl(fd, TCSBRK, 1) < 0)
+		die("Cannot tcdrain: %m");
 }
 
 static inline void xtcflush(int fd, int q)
@@ -136,7 +137,7 @@ static void raw_clearbuf_seq(void)
 	const u8 buf[4] = {0x0d, 0x0d, 0x0d, 0x0d};
 
 	xwrite(buf, 4);
-	tcdrain(wtpfd);
+	xtcdrain(wtpfd);
 }
 
 /*
