@@ -18,6 +18,15 @@
 #include "utils.h"
 #include "wtptp.h"
 
+/* Some architectures don't have termios2 */
+#ifndef TCGETS2
+#define TCGETS2 TCGETS
+#define TCSETS2 TCSETS
+#define TCSETSW2 TCSETSW
+#define TCSETSF2 TCSETSF
+#define termios2 termios
+#endif
+
 static int wtpfd = -1;
 
 static inline void xtcdrain(int fd)
