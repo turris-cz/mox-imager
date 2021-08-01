@@ -461,12 +461,15 @@ static tcflag_t baudrate_to_cflag(int baudrate)
 		B(1200), B(1800), B(2400), B(4800), B(9600), B(19200), B(38400),
 		B(57600), B(115200), B(230400), B(460800), B(500000), B(576000),
 		B(921600), B(1000000), B(1152000), B(1500000), B(2000000),
-		B(2500000), B(3000000), B(3500000), B(4000000), B(0),
+		B(2500000), B(3000000), B(3500000), B(4000000)
 	};
 #undef B
 	int i;
 
-	for (i = 0; map[i].baudrate; i++)
+	if (!baudrate)
+		die("Baudrate 0 not valid");
+
+	for (i = 0; i < sizeof(map)/sizeof(*map); i++)
 		if (map[i].baudrate == baudrate)
 			return map[i].cflag;
 
