@@ -482,7 +482,11 @@ static tcflag_t baudrate_to_cflag(int baudrate)
 		if (map[i].baudrate == baudrate)
 			return map[i].cflag;
 
+#ifdef BOTHER
 	return BOTHER;
+#else
+	die("Baudrate %d not supported", baudrate);
+#endif
 }
 
 void change_baudrate(int baudrate)
@@ -492,7 +496,9 @@ void change_baudrate(int baudrate)
 	xtcgetattr2(wtpfd, &opts);
 	opts.c_cflag &= ~CBAUD;
 	opts.c_cflag |= baudrate_to_cflag(baudrate);
+#ifdef BOTHER
 	opts.c_ispeed = opts.c_ospeed = baudrate;
+#endif
 	xtcsetattr2(wtpfd, &opts);
 	usleep(10000);
 	xtcflush(wtpfd, TCIFLUSH);
