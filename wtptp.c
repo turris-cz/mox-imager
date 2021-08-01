@@ -470,7 +470,13 @@ static tcflag_t baudrate_to_cflag(int baudrate)
 		B(1200), B(1800), B(2400), B(4800), B(9600), B(19200), B(38400),
 		B(57600), B(115200), B(230400), B(460800), B(500000), B(576000),
 		B(921600), B(1000000), B(1152000), B(1500000), B(2000000),
+#ifdef B2500000
+		/* non-SPARC architectures support these Bnnn constants */
 		B(2500000), B(3000000), B(3500000), B(4000000)
+#else
+		/* SPARC architecture supports these Bnnn constants */
+		B(76800), B(153600), B(307200), B(614400)
+#endif
 	};
 #undef B
 	int i;
