@@ -306,6 +306,10 @@ void openwtp(const char *path)
 
 	opts.c_cflag &= ~CBAUD;
 	opts.c_cflag |= B115200;
+#ifdef IBSHIFT
+	opts.c_cflag &= ~(CBAUD << IBSHIFT);
+	opts.c_cflag |= B0 << IBSHIFT;
+#endif
 	opts.c_cc[VMIN] = 1;
 	opts.c_cc[VTIME] = 10;
 	opts.c_iflag = IGNBRK;
@@ -502,6 +506,10 @@ void change_baudrate(int baudrate)
 	xtcgetattr2(wtpfd, &opts);
 	opts.c_cflag &= ~CBAUD;
 	opts.c_cflag |= baudrate_to_cflag(baudrate);
+#ifdef IBSHIFT
+	opts.c_cflag &= ~(CBAUD << IBSHIFT);
+	opts.c_cflag |= B0 << IBSHIFT;
+#endif
 #ifdef BOTHER
 	opts.c_ispeed = opts.c_ospeed = baudrate;
 #endif
