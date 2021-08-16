@@ -15,6 +15,7 @@
 #include <poll.h>
 #include <math.h>
 #include <endian.h>
+#include <pthread.h>
 #include "utils.h"
 #include "wtptp.h"
 
@@ -107,72 +108,58 @@ static void xwrite(const void *buf, size_t size)
 		die("Cannot write %zu bytes: written only %zi", size, res);
 }
 
-static int detect_char(u8 *c, int timeout)
+static int state;
+#define state_store(i) __atomic_store_n(&state, (i), __ATOMIC_RELEASE)
+#define state_load() __atomic_load_n(&state, __ATOMIC_ACQUIRE)
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
+static void *seq_write_handler(void *ptr __attribute__((unused)))
 {
-	u8 rcv;
+	const u8 esc_seq[] = {0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+	const u8 clr_seq[] = {0x0d, 0x0d, 0x0d, 0x0d};
+	const u8 wtp_seq[] = {0x03, 'w', 't', 'p', '\r'};
+	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+	const useconds_t one_cycle = 1000 * 1000 * 10 / 115200;
+	int prev_state = 0;
+	int new_state;
 
-	if (xread_timeout(&rcv, 1, timeout) != 1)
-		return 0;
+	while ((new_state = state_load()) != 4) {
+		if (new_state != 0 && prev_state == 0) {
+			xtcflush(wtpfd, TCOFLUSH);
+			xtcdrain(wtpfd);
+		}
 
-	if (c)
-		*c = rcv;
-
-	return 1;
-}
-
-static int eat_zeros_and_detect_char(u8 *c, int timeout)
-{
-	int i;
-
-	for (i = 0; i < 256; i++) {
-		if (!detect_char(c, 0))
+		switch (new_state) {
+		case 0:
+			xwrite(esc_seq, sizeof(esc_seq));
 			break;
-		if (*c != 0x00)
-			return 1;
+		case 1:
+			usleep(one_cycle);
+			xwrite(esc_seq, sizeof(esc_seq));
+			xtcdrain(wtpfd);
+			break;
+		case 2:
+			usleep(one_cycle);
+			xwrite(clr_seq, sizeof(clr_seq));
+			xtcdrain(wtpfd);
+			pthread_mutex_lock(&mutex);
+			pthread_cond_wait(&cond, &mutex);
+			pthread_mutex_unlock(&mutex);
+			break;
+		case 3:
+			usleep(one_cycle);
+			xwrite(wtp_seq, sizeof(wtp_seq));
+			xtcdrain(wtpfd);
+			pthread_mutex_lock(&mutex);
+			pthread_cond_wait(&cond, &mutex);
+			pthread_mutex_unlock(&mutex);
+			break;
+		}
+
+		prev_state = new_state;
 	}
 
-	return detect_char(c, timeout);
-}
-
-static void raw_escape_seq(void)
-{
-	const u8 buf[8] = {0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-
-	xwrite(buf, 8);
-}
-
-static void raw_clearbuf_seq(void)
-{
-	const u8 buf[4] = {0x0d, 0x0d, 0x0d, 0x0d};
-
-	xwrite(buf, 4);
-	xtcdrain(wtpfd);
-}
-
-/*
- * Determine whether we have BootROM console (ECHO is active) and should send
- * "wtp" command.
- * If ECHO is active, the escape seq we sent previously should return back, but
- * first two chars (0xbb and 0x11) will return as '>'.
- */
-static int detect_echo_escape_seq(void)
-{
-	const u8 chk[8] = {'>', '>', 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-	static u8 buf[8192];
-	size_t ret, i;
-
-	buf[0] = '>';
-	ret = 1 + xread_timeout(buf + 1, sizeof(buf) - 1, 50);
-	if (ret >= 8 && ret < sizeof(buf) && !memcmp(buf + ret - 8, chk, 8))
-		if (!detect_char(&buf[ret++], 100))
-			return 1;
-
-	if (ret < sizeof(buf))
-		for (i = 0; i < ret; i++)
-			if (ioctl(wtpfd, TIOCSTI, &buf[i]) < 0)
-				die("Cannot insert to input queue: %m");
-
-	return 0;
+	return NULL;
 }
 
 static _Bool send_wtp_cmd(void)
@@ -196,8 +183,15 @@ static _Bool send_wtp_cmd(void)
  */
 void initwtp(int escape_seq)
 {
-	u8 rcv, state;
+	const u8 bootrom_prompt_reply[] = {'>', '>', 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+	pthread_t write_thread;
+	struct termios2 opts;
+	struct pollfd pfd;
+	u8 input_buf[8192];
+	int input_len;
+	cc_t vtime;
 	int ret;
+	int i;
 
 	if (!escape_seq) {
 		/* only send wtp command */
@@ -206,79 +200,127 @@ void initwtp(int escape_seq)
 		return;
 	}
 
-	state = 0;
-	xtcflush(wtpfd, TCIOFLUSH);
+	/* disable interbyte timeout, so read() returns data immediately */
+	xtcgetattr2(wtpfd, &opts);
+	vtime = opts.c_cc[VTIME];
+	opts.c_cc[VTIME] = 0;
+	xtcsetattr2(wtpfd, &opts);
+
 	printf("Sending escape sequence, please power up the device\n");
 
+	ret = pthread_create(&write_thread, NULL, seq_write_handler, NULL);
+	if (ret) {
+		closewtp();
+		die("pthread_create failed: %m");
+		return;
+	}
+
+	pfd.fd = wtpfd;
+	pfd.events = POLLIN;
+
+	input_len = 0;
+
 	while (1) {
-		switch (state) {
-		case 0:
-			raw_escape_seq();
-			ret = detect_char(&rcv, 0);
-			break;
-		case 1:
-			raw_escape_seq();
-			usleep(500);
-			ret = eat_zeros_and_detect_char(&rcv, 1000);
-			break;
-		default:
-			ret = detect_char(&rcv, 1000);
-			break;
+		if (state > 1) {
+			pfd.revents = 0;
+			ret = poll(&pfd, 1, 300);
+			if (ret < 0) {
+				closewtp();
+				die("poll failed: %m");
+			} else if (!ret && state == 2) {
+				state_store(4);
+				pthread_cond_signal(&cond);
+				break;
+			}
 		}
 
-		if (!ret && state == 2) {
-			printf("\e[0KInitialized UART download mode\n\n");
-			return;
+		ret = read(wtpfd, input_buf + input_len, sizeof(input_buf) - input_len);
+		if (ret <= 0) {
+			closewtp();
+			die("read failed: %m");
 		}
+		input_len += ret;
 
-		if (!ret)
-			continue;
+		if (state == 0 || state == 1) {
+			if (input_buf[input_len - 1] == 0x3e && state == 0) {
+				state_store(1);
+				printf("\e[0KReceived sync reply\n");
+				printf("Sending escape sequence with delay\n");
+			}
 
-		switch (state) {
-		case 0:
-			if (rcv == 0x3e) {
-				if (detect_echo_escape_seq()) {
+			for (i = 8; i > 0; i--)
+				if (input_len >= i && !memcmp(input_buf + input_len - i, bootrom_prompt_reply, i))
+					break;
+
+			if (i > 0) {
+				if (i == 8 || (input_len - i >= 8 && !memcmp(input_buf + input_len - i - 8, bootrom_prompt_reply, 8))) {
+					state_store(3);
 					printf("\e[0KDetected BootROM command prompt\n");
-					if (send_wtp_cmd())
-						return;
-					printf("Invalid reply for command wtp, try restarting again\r");
-					fflush(stdout);
-					state = 0;
+					printf("Sending wtp sequence\n");
+					input_len = 0;
+					/* it is required to wait at least 0.5s */
+					usleep(500000);
 				} else {
-					printf("\e[0KReceived sync reply\n");
-					printf("Sending escape sequence with delay\n");
-					state = 1;
+					memmove(input_buf, input_buf + input_len - i, i);
+					input_len = i;
 				}
 			} else {
-				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", rcv);
-				fflush(stdout);
-				if (ioctl(wtpfd, TIOCINQ, &ret) < 0)
-					die("Cannot get input buffer size: %m");
-				if (ret > 100)
-					xtcflush(wtpfd, TCIFLUSH);
+				if (input_len >= 8) {
+					for (i = input_len - 1; i > input_len - 9; i--)
+						if (input_buf[i] != 0x00)
+							break;
+					if (i == input_len - 9) {
+						state_store(2);
+						printf("\e[0KReceived ack reply\n");
+						printf("Sending clearbuf sequence\n");
+					} else if (input_buf[input_len-1] != 0x3e) {
+						state_store(0);
+						printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[input_len - 1]);
+						fflush(stdout);
+					}
+					input_len = 0;
+				}
 			}
-			break;
-		case 1:
-			if (rcv == 0x00) {
-				printf("\e[0KReceived ack reply\n");
-				printf("Sending clearbuf sequence\n");
-				raw_clearbuf_seq();
-				state = 2;
+		} else if (state == 2) {
+			for (i = 0; i < input_len; i++)
+				if (input_buf[i] != 0x00)
+					break;
+			if (i == input_len) {
+				input_len = 0;
 			} else {
-				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", rcv);
+				state_store(0);
+				pthread_cond_signal(&cond);
+				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[i]);
 				fflush(stdout);
-				state = 0;
 			}
-			break;
-		case 2:
-			if (rcv != 0x00) {
-				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", rcv);
-				fflush(stdout);
-				state = 0;
+		} else if (state == 3) {
+			/* 4095 bytes is size of kernel tty buffer, drop data from beginning of buffer and read remaining data */
+			if (input_len >= 4095) {
+				memmove(input_buf, input_buf + input_len - 7, 7);
+				input_len = 7;
+			} else if (input_len >= 8) {
+				if (!memcmp(input_buf + input_len - 8, "!\r\nwtp\r\n", 8)) {
+					state_store(4);
+					pthread_cond_signal(&cond);
+					break;
+				} else {
+					state_store(0);
+					pthread_cond_signal(&cond);
+					printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[input_len - 1]);
+					fflush(stdout);
+				}
 			}
-			break;
 		}
 	}
+
+	printf("\e[0KInitialized UART download mode\n\n");
+
+	pthread_join(write_thread, NULL);
+
+	/* restore previous interbyte timeout */
+	xtcgetattr2(wtpfd, &opts);
+	opts.c_cc[VTIME] = vtime;
+	xtcsetattr2(wtpfd, &opts);
 }
 
 void setwtpfd(const char *fdstr)
