@@ -82,6 +82,9 @@ static size_t xread_timeout(void *buf, size_t size, int timeout)
 		else if (!res)
 			break;
 
+		if (pfd.revents & POLLERR)
+			die("File descriptor error");
+
 		res = read(wtpfd, buf + rd, size - rd);
 		if (res < 0)
 			die("Cannot read %zu bytes: %m", size);
