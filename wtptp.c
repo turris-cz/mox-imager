@@ -528,7 +528,7 @@ static tcflag_t baudrate_to_cflag(int baudrate)
 #endif
 	};
 #undef B
-	int i;
+	size_t i;
 
 	if (!baudrate)
 		die("Baudrate 0 not valid");
