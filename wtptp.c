@@ -508,12 +508,12 @@ static int compute_best_uart_params(u32 clk, u32 desired_baud, u32 *div, u32 *m)
 	return 0;
 }
 
-static tcflag_t baudrate_to_cflag(int baudrate)
+static tcflag_t baudrate_to_cflag(unsigned int baudrate)
 {
 #define B(b) { B ## b, b }
 	static const struct {
 		tcflag_t cflag;
-		int baudrate;
+		unsigned int baudrate;
 	} map[] = {
 		B(50), B(75), B(110), B(134), B(150), B(200), B(300), B(600),
 		B(1200), B(1800), B(2400), B(4800), B(9600), B(19200), B(38400),
@@ -540,11 +540,11 @@ static tcflag_t baudrate_to_cflag(int baudrate)
 #ifdef BOTHER
 	return BOTHER;
 #else
-	die("Baudrate %d not supported", baudrate);
+	die("Baudrate %u not supported", baudrate);
 #endif
 }
 
-void change_baudrate(int baudrate)
+void change_baudrate(unsigned int baudrate)
 {
 	struct termios2 opts = {};
 
@@ -563,13 +563,13 @@ void change_baudrate(int baudrate)
 	xtcflush(wtpfd, TCIFLUSH);
 }
 
-void try_change_baudrate(int baudrate)
+void try_change_baudrate(unsigned int baudrate)
 {
 	u8 buf[6] = "baud";
 	int tbg_freq;
 	u32 div, m;
 
-	printf("Requesting baudrate change to %i baud\n", baudrate);
+	printf("Requesting baudrate change to %u baud\n", baudrate);
 
 	/*
 	 * Wait 100ms to make sure we send the "baud" command only after BootROM
