@@ -364,6 +364,15 @@ void openwtp(const char *path)
 	opts.c_cflag |= CS8 | CREAD | CLOCAL;
 
 	xtcsetattr2(wtpfd, &opts);
+
+	xtcgetattr2(wtpfd, &opts);
+	if ((opts.c_cflag & CBAUD) != B115200)
+		die("Baudrate 115200 not supported");
+#ifdef IBSHIFT
+	if (((opts.c_cflag >> IBSHIFT) & CBAUD) != B0)
+		die("Baudrate 115200 not supported");
+#endif
+
 	xtcflush(wtpfd, TCIFLUSH);
 
 	flags = fcntl(wtpfd, F_GETFL);
@@ -544,13 +553,22 @@ static tcflag_t baudrate_to_cflag(unsigned int baudrate)
 #endif
 }
 
+static int
+is_within_tolerance(unsigned int value, unsigned int reference,
+		    unsigned int tolerance)
+{
+	return 100 * value >= reference * (100 - tolerance) &&
+	       100 * value <= reference * (100 + tolerance);
+}
+
 void change_baudrate(unsigned int baudrate)
 {
 	struct termios2 opts = {};
+	tcflag_t cflag_speed = baudrate_to_cflag(baudrate);
 
 	xtcgetattr2(wtpfd, &opts);
 	opts.c_cflag &= ~CBAUD;
-	opts.c_cflag |= baudrate_to_cflag(baudrate);
+	opts.c_cflag |= cflag_speed;
 #ifdef IBSHIFT
 	opts.c_cflag &= ~(CBAUD << IBSHIFT);
 	opts.c_cflag |= B0 << IBSHIFT;
@@ -559,6 +577,19 @@ void change_baudrate(unsigned int baudrate)
 	opts.c_ispeed = opts.c_ospeed = baudrate;
 #endif
 	xtcsetattr2(wtpfd, &opts);
+	xtcgetattr2(wtpfd, &opts);
+	if ((opts.c_cflag & CBAUD) != cflag_speed)
+		die("Baudrate %u not supported", baudrate);
+#ifdef IBSHIFT
+	if (((opts.c_cflag >> IBSHIFT) & CBAUD) != B0)
+		die("Baudrate %u not supported", baudrate);
+#endif
+#ifdef BOTHER
+	/* Check that set baudrate is in 3% tolerance */
+	if (!is_within_tolerance(opts.c_ospeed, baudrate, 3) ||
+	    !is_within_tolerance(opts.c_ispeed, baudrate, 3))
+		die("Baudrate %u not supported", baudrate);
+#endif
 	usleep(10000);
 	xtcflush(wtpfd, TCIFLUSH);
 }
