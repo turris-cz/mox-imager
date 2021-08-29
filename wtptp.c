@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/ioctl.h>
 #include <asm/termbits.h>
 #include <sys/stat.h>
@@ -220,6 +221,7 @@ void initwtp(int escape_seq)
 	ret = pthread_create(&write_thread, NULL, seq_write_handler, NULL);
 	if (ret) {
 		closewtp();
+		errno = ret;
 		die("pthread_create failed: %m");
 		return;
 	}
