@@ -358,6 +358,9 @@ void openwtp(const char *path)
 	memset(&opts, 0, sizeof(opts));
 	xtcgetattr2(wtpfd, &opts);
 
+	cfmakeraw2(&opts);
+	opts.c_cflag |= CREAD | CLOCAL;
+	opts.c_cflag &= ~(CSTOPB | HUPCL | CRTSCTS);
 	opts.c_cflag &= ~CBAUD;
 	opts.c_cflag |= B115200;
 #ifdef IBSHIFT
@@ -366,11 +369,6 @@ void openwtp(const char *path)
 #endif
 	opts.c_cc[VMIN] = 1;
 	opts.c_cc[VTIME] = 10;
-	opts.c_iflag = 0;
-	opts.c_lflag = 0;
-	opts.c_oflag = 0;
-	opts.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
-	opts.c_cflag |= CS8 | CREAD | CLOCAL;
 
 	xtcsetattr2(wtpfd, &opts);
 
