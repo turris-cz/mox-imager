@@ -192,6 +192,7 @@ void initwtp(int escape_seq)
 	struct pollfd pfd;
 	u8 input_buf[8192];
 	int input_len;
+	tcflag_t iflag;
 	cc_t vtime;
 	int ret;
 	int i;
@@ -203,10 +204,15 @@ void initwtp(int escape_seq)
 		return;
 	}
 
-	/* disable interbyte timeout, so read() returns data immediately */
+	/*
+	 * disable interbyte timeout, so read() returns data immediately and
+	 * PARMRK to distinguish between zero byte and break condition
+	 */
 	xtcgetattr2(wtpfd, &opts);
 	vtime = opts.c_cc[VTIME];
 	opts.c_cc[VTIME] = 0;
+	iflag = opts.c_iflag;
+	opts.c_iflag |= PARMRK;
 	xtcsetattr2(wtpfd, &opts);
 
 	printf("Sending escape sequence, please power up the device\n");
@@ -320,9 +326,10 @@ void initwtp(int escape_seq)
 
 	pthread_join(write_thread, NULL);
 
-	/* restore previous interbyte timeout */
+	/* restore previous interbyte timeout and iflag */
 	xtcgetattr2(wtpfd, &opts);
 	opts.c_cc[VTIME] = vtime;
+	opts.c_iflag = iflag;
 	xtcsetattr2(wtpfd, &opts);
 }
 
@@ -357,7 +364,7 @@ void openwtp(const char *path)
 #endif
 	opts.c_cc[VMIN] = 1;
 	opts.c_cc[VTIME] = 10;
-	opts.c_iflag = IGNBRK;
+	opts.c_iflag = 0;
 	opts.c_lflag = 0;
 	opts.c_oflag = 0;
 	opts.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
