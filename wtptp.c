@@ -65,7 +65,7 @@ static void cfmakeraw2(struct termios2 *t)
 	t->c_cflag |= CS8;
 }
 
-static size_t xread_timeout(void *buf, size_t size, int timeout)
+static void xread(void *buf, size_t size)
 {
 	ssize_t res;
 	size_t rd;
@@ -77,11 +77,9 @@ static size_t xread_timeout(void *buf, size_t size, int timeout)
 	rd = 0;
 	while (rd < size) {
 		pfd.revents = 0;
-		res = poll(&pfd, 1, timeout);
-		if (res < 0)
+		res = poll(&pfd, 1, -1);
+		if (res <= 0)
 			die("Cannot poll: %m\n");
-		else if (!res)
-			break;
 
 		if (pfd.revents & POLLERR)
 			die("File descriptor error");
@@ -92,13 +90,6 @@ static size_t xread_timeout(void *buf, size_t size, int timeout)
 
 		rd += res;
 	}
-
-	return rd;
-}
-
-static void xread(void *buf, size_t size)
-{
-	xread_timeout(buf, size, -1);
 }
 
 static void xwrite(const void *buf, size_t size)
