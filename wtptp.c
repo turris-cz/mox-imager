@@ -69,25 +69,12 @@ static void xread(void *buf, size_t size)
 {
 	ssize_t res;
 	size_t rd;
-	struct pollfd pfd;
-
-	pfd.fd = wtpfd;
-	pfd.events = POLLIN;
 
 	rd = 0;
 	while (rd < size) {
-		pfd.revents = 0;
-		res = poll(&pfd, 1, -1);
-		if (res <= 0)
-			die("Cannot poll: %m\n");
-
-		if (pfd.revents & POLLERR)
-			die("File descriptor error");
-
 		res = read(wtpfd, buf + rd, size - rd);
-		if (res < 0)
+		if (res <= 0)
 			die("Cannot read %zu bytes: %m", size);
-
 		rd += res;
 	}
 }
@@ -185,7 +172,6 @@ void initwtp(int escape_seq)
 	u8 input_buf[8192];
 	int input_len;
 	tcflag_t iflag;
-	cc_t vtime;
 	int ret;
 	int i;
 
@@ -196,13 +182,8 @@ void initwtp(int escape_seq)
 		return;
 	}
 
-	/*
-	 * disable interbyte timeout, so read() returns data immediately and
-	 * PARMRK to distinguish between zero byte and break condition
-	 */
+	/* set PARMRK to distinguish between zero byte and break condition */
 	xtcgetattr2(wtpfd, &opts);
-	vtime = opts.c_cc[VTIME];
-	opts.c_cc[VTIME] = 0;
 	iflag = opts.c_iflag;
 	opts.c_iflag |= PARMRK;
 	xtcsetattr2(wtpfd, &opts);
@@ -319,9 +300,8 @@ void initwtp(int escape_seq)
 
 	pthread_join(write_thread, NULL);
 
-	/* restore previous interbyte timeout and iflag */
+	/* restore previous iflag */
 	xtcgetattr2(wtpfd, &opts);
-	opts.c_cc[VTIME] = vtime;
 	opts.c_iflag = iflag;
 	xtcsetattr2(wtpfd, &opts);
 }
@@ -359,7 +339,7 @@ void openwtp(const char *path)
 	opts.c_cflag |= B0 << IBSHIFT;
 #endif
 	opts.c_cc[VMIN] = 1;
-	opts.c_cc[VTIME] = 10;
+	opts.c_cc[VTIME] = 0;
 
 	xtcsetattr2(wtpfd, &opts);
 
