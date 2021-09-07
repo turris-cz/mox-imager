@@ -144,21 +144,6 @@ static void *seq_write_handler(void *ptr __attribute__((unused)))
 	return NULL;
 }
 
-static _Bool send_wtp_cmd(void)
-{
-	u8 buf[8];
-
-	xwrite("\x03wtp\r", 5);
-	xread(buf, 8);
-
-	if (!memcmp(buf, "!\r\nwtp\r\n", 8)) {
-		printf("Initialized WTP download mode\n\n");
-		return 1;
-	} else {
-		return 0;
-	}
-}
-
 /*
  * This works when escape sequence is needed to force UART mode but also when
  * BootROM console is enabled and "wtp" command is needed.
@@ -177,8 +162,11 @@ void initwtp(int escape_seq)
 
 	if (!escape_seq) {
 		/* only send wtp command */
-		if (!send_wtp_cmd())
+		xwrite("\x03wtp\r", 5);
+		xread(input_buf, 8);
+		if (memcmp(input_buf, "!\r\nwtp\r\n", 8))
 			die("Invalid reply for command wtp, try again");
+		printf("Initialized WTP download mode\n\n");
 		return;
 	}
 
