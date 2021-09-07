@@ -93,19 +93,18 @@ static void xwrite(const void *buf, size_t size)
 static int state;
 #define state_store(i) __atomic_store_n(&state, (i), __ATOMIC_RELEASE)
 #define state_load() __atomic_load_n(&state, __ATOMIC_ACQUIRE)
-static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 static void *seq_write_handler(void *ptr __attribute__((unused)))
 {
 	const u8 esc_seq[] = {0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
 	const u8 clr_seq[] = {0x0d, 0x0d, 0x0d, 0x0d};
 	const u8 wtp_seq[] = {0x03, 'w', 't', 'p', '\r'};
-	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	const useconds_t one_cycle = 1000 * 1000 * 10 / 115200;
 	int prev_state = 0;
 	int new_state;
 
-	while ((new_state = state_load()) != 4) {
+	while (1) {
+		new_state = state_load();
 		if (new_state != 0 && prev_state == 0) {
 			xtcflush(wtpfd, TCOFLUSH);
 			xtcdrain(wtpfd);
@@ -124,24 +123,42 @@ static void *seq_write_handler(void *ptr __attribute__((unused)))
 			usleep(one_cycle);
 			xwrite(clr_seq, sizeof(clr_seq));
 			xtcdrain(wtpfd);
-			pthread_mutex_lock(&mutex);
-			pthread_cond_wait(&cond, &mutex);
-			pthread_mutex_unlock(&mutex);
-			break;
+			return NULL;
 		case 3:
 			usleep(one_cycle);
 			xwrite(wtp_seq, sizeof(wtp_seq));
 			xtcdrain(wtpfd);
-			pthread_mutex_lock(&mutex);
-			pthread_cond_wait(&cond, &mutex);
-			pthread_mutex_unlock(&mutex);
-			break;
+			return NULL;
+		default:
+			return NULL;
 		}
 
 		prev_state = new_state;
 	}
+}
 
-	return NULL;
+static void seq_write_thread_start(pthread_t *write_thread)
+{
+	int ret;
+
+	ret = pthread_create(write_thread, NULL, seq_write_handler, NULL);
+	if (ret) {
+		closewtp();
+		errno = ret;
+		die("pthread_create failed: %m");
+	}
+}
+
+static void seq_write_thread_stop(pthread_t write_thread)
+{
+	int ret;
+
+	ret = pthread_join(write_thread, NULL);
+	if (ret) {
+		closewtp();
+		errno = ret;
+		die("pthread_join failed: %m");
+	}
 }
 
 /*
@@ -177,14 +194,7 @@ void initwtp(int escape_seq)
 	xtcsetattr2(wtpfd, &opts);
 
 	printf("Sending escape sequence, please power up the device\n");
-
-	ret = pthread_create(&write_thread, NULL, seq_write_handler, NULL);
-	if (ret) {
-		closewtp();
-		errno = ret;
-		die("pthread_create failed: %m");
-		return;
-	}
+	seq_write_thread_start(&write_thread);
 
 	pfd.fd = wtpfd;
 	pfd.events = POLLIN;
@@ -199,8 +209,6 @@ void initwtp(int escape_seq)
 				closewtp();
 				die("poll failed: %m");
 			} else if (!ret && state == 2) {
-				state_store(4);
-				pthread_cond_signal(&cond);
 				break;
 			}
 		}
@@ -228,6 +236,7 @@ void initwtp(int escape_seq)
 					state_store(3);
 					printf("\e[0KDetected BootROM command prompt\n");
 					printf("Sending wtp sequence\n");
+					seq_write_thread_stop(write_thread);
 					input_len = 0;
 					/* it is required to wait at least 0.5s */
 					usleep(500000);
@@ -244,6 +253,7 @@ void initwtp(int escape_seq)
 						state_store(2);
 						printf("\e[0KReceived ack reply\n");
 						printf("Sending clearbuf sequence\n");
+						seq_write_thread_stop(write_thread);
 					} else if (input_buf[input_len-1] != 0x3e) {
 						state_store(0);
 						printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[input_len - 1]);
@@ -260,7 +270,7 @@ void initwtp(int escape_seq)
 				input_len = 0;
 			} else {
 				state_store(0);
-				pthread_cond_signal(&cond);
+				seq_write_thread_start(&write_thread);
 				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[i]);
 				fflush(stdout);
 			}
@@ -271,12 +281,10 @@ void initwtp(int escape_seq)
 				input_len = 7;
 			} else if (input_len >= 8) {
 				if (!memcmp(input_buf + input_len - 8, "!\r\nwtp\r\n", 8)) {
-					state_store(4);
-					pthread_cond_signal(&cond);
 					break;
 				} else {
 					state_store(0);
-					pthread_cond_signal(&cond);
+					seq_write_thread_start(&write_thread);
 					printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[input_len - 1]);
 					fflush(stdout);
 				}
@@ -285,8 +293,6 @@ void initwtp(int escape_seq)
 	}
 
 	printf("\e[0KInitialized UART download mode\n\n");
-
-	pthread_join(write_thread, NULL);
 
 	/* restore previous iflag */
 	xtcgetattr2(wtpfd, &opts);
