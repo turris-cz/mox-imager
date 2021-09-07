@@ -976,6 +976,7 @@ void uart_terminal(void) {
 		fd_set rfds;
 		int nfds = 0;
 
+		FD_ZERO(&rfds);
 		FD_SET(wtpfd, &rfds);
 		nfds = nfds < wtpfd ? wtpfd : nfds;
 
