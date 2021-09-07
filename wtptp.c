@@ -995,7 +995,7 @@ void uart_terminal(void) {
 				break;
 		}
 
-		if (FD_ISSET(in, &rfds)) {
+		if (in >= 0 && FD_ISSET(in, &rfds)) {
 			if (uart_terminal_pipe(in, wtpfd, quit, &s))
 				break;
 		}
