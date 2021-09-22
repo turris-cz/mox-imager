@@ -588,6 +588,9 @@ void try_change_baudrate(unsigned int baudrate)
 
 	printf("Requesting baudrate change to %u baud\n", baudrate);
 
+	if (!isatty(wtpfd))
+		die("File descriptor is not tty and does not support baudrate change");
+
 	/*
 	 * Wait 100ms to make sure we send the "baud" command only after BootROM
 	 * verified the TIM and is in execution of the GPP program.
