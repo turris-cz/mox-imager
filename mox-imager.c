@@ -636,7 +636,7 @@ int main(int argc, char **argv)
 
 		if (no_a53_firmware) {
 			if (trusted)
-				die("Cannot modify trusted image!\n");
+				die("Cannot modify trusted image!");
 			tim_remove_image(timh, name2id("OBMI"));
 			tim_rehash(timh);
 		}
@@ -650,7 +650,7 @@ int main(int argc, char **argv)
 		if (baudrate && !has_fast_mode) {
 			if (trusted)
 				die("Fast upload mode not supported by this image\n"
-				    "and cannot inject the code into trusted image!\n");
+				    "and cannot inject the code into trusted image!");
 			tim_inject_baudrate_change_support(timn ? : timh);
 		}
 

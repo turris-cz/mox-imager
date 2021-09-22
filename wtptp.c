@@ -608,7 +608,7 @@ void try_change_baudrate(unsigned int baudrate)
 				    ((buf[3] & 1) << 8) | buf[2], buf[4]);
 
 	if (compute_best_uart_params(tbg_freq, baudrate, &div, &m))
-		die("Failed computing A3720 UART parameters for baudrate %i!\n",
+		die("Failed computing A3720 UART parameters for baudrate %i!",
 		    baudrate);
 
 	*(u16 *)&buf[0] = htole16(div);
@@ -761,7 +761,7 @@ void sendimage(image_t *img, int fast)
 
 			sendcmd(0x2a, seq, 0, fast ? 4 : 0, 4, buf, &resp);
 			if (resp.len != 4)
-				die("DataHeader response length = %i != 4\n",
+				die("DataHeader response length = %i != 4",
 				    resp.len);
 
 			if (fast && !(resp.flags & 4))
