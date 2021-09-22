@@ -303,9 +303,14 @@ void initwtp(int escape_seq)
 void setwtpfd(const char *fdstr)
 {
 	char *end;
+	int flags;
 
 	wtpfd = strtol(fdstr, &end, 10);
 	if (*end || wtpfd < 0)
+		die("Wrong file descriptor %s", fdstr);
+
+	flags = fcntl(wtpfd, F_GETFL);
+	if (flags < 0 && errno == EBADF)
 		die("Wrong file descriptor %s", fdstr);
 }
 
