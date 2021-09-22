@@ -312,6 +312,15 @@ void setwtpfd(const char *fdstr)
 	flags = fcntl(wtpfd, F_GETFL);
 	if (flags < 0 && errno == EBADF)
 		die("Wrong file descriptor %s", fdstr);
+
+	if (flags < 0)
+		die("Could not get file descriptor flags: %m");
+
+	if (flags & O_NONBLOCK) {
+		/* set to blocking mode */
+		if (fcntl(wtpfd, F_SETFL, flags & ~O_NONBLOCK))
+			die("Unsetting O_NONBLOCK failed: %m");
+	}
 }
 
 void openwtp(const char *path)
