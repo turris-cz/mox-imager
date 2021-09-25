@@ -171,18 +171,17 @@ void initwtp(int escape_seq)
 	pthread_t write_thread;
 	struct termios2 opts;
 	struct pollfd pfd;
-	u8 input_buf[8192];
-	int input_len;
-	int ack_count;
 	tcflag_t iflag;
+	int ack_count;
+	u8 buf[8192];
+	int len, i;
 	int ret;
-	int i;
 
 	if (!escape_seq) {
 		/* only send wtp command */
 		xwrite("\x03wtp\r", 5);
-		xread(input_buf, 8);
-		if (memcmp(input_buf, "!\r\nwtp\r\n", 8))
+		xread(buf, 8);
+		if (memcmp(buf, "!\r\nwtp\r\n", 8))
 			die("Invalid reply for command wtp, try again");
 		printf("Initialized WTP download mode\n\n");
 		return;
@@ -200,7 +199,7 @@ void initwtp(int escape_seq)
 	pfd.fd = wtpfd;
 	pfd.events = POLLIN;
 
-	input_len = 0;
+	len = 0;
 	ack_count = 0;
 
 	while (1) {
@@ -215,92 +214,92 @@ void initwtp(int escape_seq)
 			}
 		}
 
-		ret = read(wtpfd, input_buf + input_len, sizeof(input_buf) - input_len);
+		ret = read(wtpfd, buf + len, sizeof(buf) - len);
 		if (ret <= 0) {
 			closewtp();
 			die("read failed: %m");
 		}
-		input_len += ret;
+		len += ret;
 
 		if (state == 0 || state == 1) {
-			if (input_buf[input_len - 1] == 0x3e && state == 0) {
+			if (buf[len - 1] == 0x3e && state == 0) {
 				state_store(1);
 				printf("\e[0KReceived sync reply\n");
 				printf("Sending escape sequence with delay\n");
 			}
 
 			for (i = 8; i > 0; i--)
-				if (input_len >= i && !memcmp(input_buf + input_len - i, bootrom_prompt_reply, i))
+				if (len >= i && !memcmp(buf + len - i, bootrom_prompt_reply, i))
 					break;
 
 			if (i > 0) {
-				if (i == 8 || (input_len - i >= 8 && !memcmp(input_buf + input_len - i - 8, bootrom_prompt_reply, 8))) {
+				if (i == 8 || (len - i >= 8 && !memcmp(buf + len - i - 8, bootrom_prompt_reply, 8))) {
 					state_store(3);
 					printf("\e[0KDetected BootROM command prompt\n");
 					printf("Sending wtp sequence\n");
 					seq_write_thread_stop(write_thread);
-					input_len = 0;
+					len = 0;
 					/* it is required to wait at least 0.5s */
 					usleep(500000);
 				} else {
-					memmove(input_buf, input_buf + input_len - i, i);
-					input_len = i;
+					memmove(buf, buf + len - i, i);
+					len = i;
 				}
 			} else {
-				if (input_len >= 16) {
-					for (i = input_len - 1; i > input_len - 1 - 16; i--)
-						if (input_buf[i] != 0x00)
+				if (len >= 16) {
+					for (i = len - 1; i > len - 1 - 16; i--)
+						if (buf[i] != 0x00)
 							break;
-					if (i == input_len - 1 - 16) {
+					if (i == len - 1 - 16) {
 						state_store(2);
 						printf("\e[0KReceived ack reply\n");
 						printf("Sending clearbuf sequence\n");
 						seq_write_thread_stop(write_thread);
 						ack_count = 0;
-					} else if (input_buf[input_len-1] != 0x3e) {
+					} else if (buf[len-1] != 0x3e) {
 						state_store(0);
-						printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[input_len - 1]);
+						printf("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
 						fflush(stdout);
 					}
-					input_len = 0;
+					len = 0;
 				}
 			}
 		} else if (state == 2) {
-			for (i = 0; i < input_len; i++)
-				if (input_buf[i] != 0x00)
+			for (i = 0; i < len; i++)
+				if (buf[i] != 0x00)
 					break;
-			if (i == input_len) {
+			if (i == len) {
 				/*
 				 * if we received too much ack replies after
 				 * first read (ack_count is non-zero), send
 				 * clearbuf sequence again
 				 */
-				if (ack_count && ack_count + input_len > 1000) {
+				if (ack_count && ack_count + len > 1000) {
 					seq_write_thread_start(&write_thread);
 					seq_write_thread_stop(write_thread);
 					ack_count = 0;
 				} else {
-					ack_count += input_len;
+					ack_count += len;
 				}
-				input_len = 0;
+				len = 0;
 			} else {
 				state_store(0);
 				seq_write_thread_start(&write_thread);
-				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[i]);
+				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[i]);
 				fflush(stdout);
 			}
 		} else if (state == 3) {
 			/* 4095 bytes is size of kernel tty buffer, drop data from beginning of buffer and read remaining data */
-			if (input_len >= 4095) {
-				memmove(input_buf, input_buf + input_len - 7, 7);
-				input_len = 7;
-			} else if (input_len >= 8) {
-				if (!memcmp(input_buf + input_len - 8, "!\r\nwtp\r\n", 8)) {
+			if (len >= 4095) {
+				memmove(buf, buf + len - 7, 7);
+				len = 7;
+			} else if (len >= 8) {
+				if (!memcmp(buf + len - 8, "!\r\nwtp\r\n", 8)) {
 					break;
 				} else {
 					state_store(0);
 					seq_write_thread_start(&write_thread);
-					printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[input_len - 1]);
+					printf("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
 					fflush(stdout);
 				}
 			}
