@@ -245,11 +245,11 @@ void initwtp(int escape_seq)
 					input_len = i;
 				}
 			} else {
-				if (input_len >= 8) {
-					for (i = input_len - 1; i > input_len - 9; i--)
+				if (input_len >= 16) {
+					for (i = input_len - 1; i > input_len - 1 - 16; i--)
 						if (input_buf[i] != 0x00)
 							break;
-					if (i == input_len - 9) {
+					if (i == input_len - 1 - 16) {
 						state_store(2);
 						printf("\e[0KReceived ack reply\n");
 						printf("Sending clearbuf sequence\n");
