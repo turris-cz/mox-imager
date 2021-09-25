@@ -159,6 +159,17 @@ static void seq_write_thread_stop(pthread_t write_thread)
 	}
 }
 
+static int is_all_zeros(const u8 *buf, int len)
+{
+	int i;
+
+	for (i = 0; i < len; ++i)
+		if (buf[i])
+			return 0;
+
+	return 1;
+}
+
 /*
  * This works when escape sequence is needed to force UART mode but also when
  * BootROM console is enabled and "wtp" command is needed.
@@ -242,10 +253,7 @@ void initwtp(int escape_seq)
 				}
 			} else {
 				if (len >= 16) {
-					for (i = len - 1; i > len - 1 - 16; i--)
-						if (buf[i] != 0x00)
-							break;
-					if (i == len - 1 - 16) {
+					if (is_all_zeros(buf + len - 16, 16)) {
 						state_store(2);
 						printf("\e[0KReceived ack reply\n");
 						printf("Sending clearbuf sequence\n");
@@ -260,10 +268,7 @@ void initwtp(int escape_seq)
 				}
 			}
 		} else if (state == 2) {
-			for (i = 0; i < len; i++)
-				if (buf[i] != 0x00)
-					break;
-			if (i == len) {
+			if (is_all_zeros(buf, len)) {
 				/*
 				 * if we received too much ack replies after
 				 * first read (ack_count is non-zero), send
@@ -280,7 +285,7 @@ void initwtp(int escape_seq)
 			} else {
 				state_store(0);
 				seq_write_thread_start(&write_thread);
-				printf("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[i]);
+				printf("\e[0KInvalid reply, try restarting again\r");
 				fflush(stdout);
 			}
 		} else if (state == 3) {
