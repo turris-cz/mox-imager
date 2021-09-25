@@ -10,6 +10,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "wtptp.h"
+
 #pragma weak terminal_on_exit
 int terminal_on_exit = 0;
 
@@ -19,6 +21,10 @@ void uart_terminal(void) {}
 __attribute__((noreturn)) void die(const char *fmt, ...)
 {
 	va_list ap;
+
+#ifndef GPP_COMPILER
+	closewtp();
+#endif
 
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);

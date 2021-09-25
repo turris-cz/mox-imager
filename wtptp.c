@@ -143,7 +143,6 @@ static void seq_write_thread_start(pthread_t *write_thread)
 
 	ret = pthread_create(write_thread, NULL, seq_write_handler, NULL);
 	if (ret) {
-		closewtp();
 		errno = ret;
 		die("pthread_create failed: %m");
 	}
@@ -155,7 +154,6 @@ static void seq_write_thread_stop(pthread_t write_thread)
 
 	ret = pthread_join(write_thread, NULL);
 	if (ret) {
-		closewtp();
 		errno = ret;
 		die("pthread_join failed: %m");
 	}
@@ -206,19 +204,16 @@ void initwtp(int escape_seq)
 		if (state > 1) {
 			pfd.revents = 0;
 			ret = poll(&pfd, 1, 300);
-			if (ret < 0) {
-				closewtp();
+			if (ret < 0)
 				die("poll failed: %m");
-			} else if (!ret && state == 2) {
+			else if (!ret && state == 2)
 				break;
-			}
 		}
 
 		ret = read(wtpfd, buf + len, sizeof(buf) - len);
-		if (ret <= 0) {
-			closewtp();
+		if (ret <= 0)
 			die("read failed: %m");
-		}
+
 		len += ret;
 
 		if (state == 0 || state == 1) {
@@ -386,7 +381,8 @@ void openwtp(const char *path)
 
 void closewtp(void)
 {
-	close(wtpfd);
+	if (wtpfd != -1)
+		close(wtpfd);
 	wtpfd = -1;
 }
 
