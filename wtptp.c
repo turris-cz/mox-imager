@@ -100,7 +100,7 @@ static void *seq_write_handler(void *ptr __attribute__((unused)))
 	const u8 clr_seq[] = {0x0d, 0x0d, 0x0d, 0x0d};
 	const u8 wtp_seq[] = {0x03, 'w', 't', 'p', '\r'};
 	const useconds_t one_cycle = 1000 * 1000 * 10 / 115200;
-	int prev_state = 0;
+	int prev_state = state_load();
 	int new_state;
 
 	while (1) {
@@ -173,6 +173,7 @@ void initwtp(int escape_seq)
 	struct pollfd pfd;
 	u8 input_buf[8192];
 	int input_len;
+	int ack_count;
 	tcflag_t iflag;
 	int ret;
 	int i;
@@ -200,6 +201,7 @@ void initwtp(int escape_seq)
 	pfd.events = POLLIN;
 
 	input_len = 0;
+	ack_count = 0;
 
 	while (1) {
 		if (state > 1) {
@@ -254,6 +256,7 @@ void initwtp(int escape_seq)
 						printf("\e[0KReceived ack reply\n");
 						printf("Sending clearbuf sequence\n");
 						seq_write_thread_stop(write_thread);
+						ack_count = 0;
 					} else if (input_buf[input_len-1] != 0x3e) {
 						state_store(0);
 						printf("\e[0KInvalid reply 0x%02x, try restarting again\r", input_buf[input_len - 1]);
@@ -267,6 +270,18 @@ void initwtp(int escape_seq)
 				if (input_buf[i] != 0x00)
 					break;
 			if (i == input_len) {
+				/*
+				 * if we received too much ack replies after
+				 * first read (ack_count is non-zero), send
+				 * clearbuf sequence again
+				 */
+				if (ack_count && ack_count + input_len > 1000) {
+					seq_write_thread_start(&write_thread);
+					seq_write_thread_stop(write_thread);
+					ack_count = 0;
+				} else {
+					ack_count += input_len;
+				}
 				input_len = 0;
 			} else {
 				state_store(0);
