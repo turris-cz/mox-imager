@@ -206,6 +206,9 @@ void initwtp(int escape_seq)
 		return;
 	}
 
+	if (!isatty(wtpfd))
+		die("Cannot send escape sequence on non-tty file descriptor");
+
 	/* set PARMRK to distinguish between zero byte and break condition */
 	xtcgetattr2(wtpfd, &opts);
 	iflag = opts.c_iflag;
