@@ -132,7 +132,7 @@ static void *seq_write_handler(void *ptr __attribute__((unused)))
 			seq_write(wtp_seq, sizeof(wtp_seq));
 			return NULL;
 		default:
-			return NULL;
+			__builtin_unreachable();
 		}
 
 		prev_state = new_state;
