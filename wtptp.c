@@ -94,12 +94,20 @@ static int state;
 #define state_store(i) __atomic_store_n(&state, (i), __ATOMIC_RELEASE)
 #define state_load() __atomic_load_n(&state, __ATOMIC_ACQUIRE)
 
+static void seq_write(const void *seq, size_t len)
+{
+	const useconds_t one_cycle = 1000 * 1000 * 10 / 115200;
+
+	usleep(one_cycle);
+	xwrite(seq, len);
+	xtcdrain(wtpfd);
+}
+
 static void *seq_write_handler(void *ptr __attribute__((unused)))
 {
 	const u8 esc_seq[] = {0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
 	const u8 clr_seq[] = {0x0d, 0x0d, 0x0d, 0x0d};
 	const u8 wtp_seq[] = {0x03, 'w', 't', 'p', '\r'};
-	const useconds_t one_cycle = 1000 * 1000 * 10 / 115200;
 	int prev_state = state_load();
 	int new_state;
 
@@ -115,19 +123,13 @@ static void *seq_write_handler(void *ptr __attribute__((unused)))
 			xwrite(esc_seq, sizeof(esc_seq));
 			break;
 		case 1:
-			usleep(one_cycle);
-			xwrite(esc_seq, sizeof(esc_seq));
-			xtcdrain(wtpfd);
+			seq_write(esc_seq, sizeof(esc_seq));
 			break;
 		case 2:
-			usleep(one_cycle);
-			xwrite(clr_seq, sizeof(clr_seq));
-			xtcdrain(wtpfd);
+			seq_write(clr_seq, sizeof(clr_seq));
 			return NULL;
 		case 3:
-			usleep(one_cycle);
-			xwrite(wtp_seq, sizeof(wtp_seq));
-			xtcdrain(wtpfd);
+			seq_write(wtp_seq, sizeof(wtp_seq));
 			return NULL;
 		default:
 			return NULL;
