@@ -155,7 +155,7 @@ static void seq_write_thread_start(pthread_t *write_thread)
 	}
 }
 
-static void seq_write_thread_stop(pthread_t write_thread)
+static void seq_write_thread_join(pthread_t write_thread)
 {
 	int ret;
 
@@ -257,7 +257,7 @@ void initwtp(int escape_seq)
 					state_store(STATE_WRITE_WTP);
 					printf("\e[0KDetected BootROM command prompt\n");
 					printf("Sending wtp sequence\n");
-					seq_write_thread_stop(write_thread);
+					seq_write_thread_join(write_thread);
 					len = 0;
 					/* it is required to wait at least 0.5s */
 					usleep(500000);
@@ -271,7 +271,7 @@ void initwtp(int escape_seq)
 						state_store(STATE_WRITE_CLEAR);
 						printf("\e[0KReceived ack reply\n");
 						printf("Sending clearbuf sequence\n");
-						seq_write_thread_stop(write_thread);
+						seq_write_thread_join(write_thread);
 						ack_count = 0;
 					} else if (buf[len - 1] != 0x3e) {
 						state_store(STATE_ESCAPE);
@@ -292,7 +292,7 @@ void initwtp(int escape_seq)
 				 */
 				if (ack_count && ack_count + len > 1000) {
 					seq_write_thread_start(&write_thread);
-					seq_write_thread_stop(write_thread);
+					seq_write_thread_join(write_thread);
 					ack_count = 0;
 				} else {
 					ack_count += len;
