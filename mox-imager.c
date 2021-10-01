@@ -688,11 +688,12 @@ int main(int argc, char **argv)
 		else
 			openwtp(tty);
 
-		initwtp(send_escape);
-
 		nimages_all = nimages;
 		if (timn)
 			nimages_all += nimages_timn;
+
+		if (nimages_all || send_escape)
+			initwtp(send_escape);
 
 		for (i = 0; i < nimages_all; ++i) {
 			u32 imgtype;
