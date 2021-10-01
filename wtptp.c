@@ -90,7 +90,12 @@ static void xwrite(const void *buf, size_t size)
 		die("Cannot write %zu bytes: written only %zi", size, res);
 }
 
-static int state;
+static enum escape_state {
+	STATE_ESCAPE,
+	STATE_SEQ_ESCAPE,
+	STATE_WRITE_CLEAR,
+	STATE_WRITE_WTP,
+} state;
 #define state_store(i) __atomic_store_n(&state, (i), __ATOMIC_RELEASE)
 #define state_load() __atomic_load_n(&state, __ATOMIC_ACQUIRE)
 
@@ -108,27 +113,27 @@ static void *seq_write_handler(void *ptr __attribute__((unused)))
 	const u8 esc_seq[] = { 0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77 };
 	const u8 clr_seq[] = { 0x0d, 0x0d, 0x0d, 0x0d };
 	const u8 wtp_seq[] = { 0x03, 'w', 't', 'p', '\r' };
-	int prev_state = state_load();
-	int new_state;
+	enum escape_state prev_state = state_load();
 
 	while (1) {
-		new_state = state_load();
-		if (new_state != 0 && prev_state == 0) {
+		enum escape_state new_state = state_load();
+
+		if (new_state != STATE_ESCAPE && prev_state == STATE_ESCAPE) {
 			xtcflush(wtpfd, TCOFLUSH);
 			xtcdrain(wtpfd);
 		}
 
 		switch (new_state) {
-		case 0:
+		case STATE_ESCAPE:
 			xwrite(esc_seq, sizeof(esc_seq));
 			break;
-		case 1:
+		case STATE_SEQ_ESCAPE:
 			seq_write(esc_seq, sizeof(esc_seq));
 			break;
-		case 2:
+		case STATE_WRITE_CLEAR:
 			seq_write(clr_seq, sizeof(clr_seq));
 			return NULL;
-		case 3:
+		case STATE_WRITE_WTP:
 			seq_write(wtp_seq, sizeof(wtp_seq));
 			return NULL;
 		default:
@@ -218,12 +223,12 @@ void initwtp(int escape_seq)
 	done = 0;
 
 	while (!done) {
-		if (state > 1) {
+		if (state == STATE_WRITE_CLEAR || state == STATE_WRITE_WTP) {
 			pfd.revents = 0;
 			ret = poll(&pfd, 1, 300);
 			if (ret < 0)
 				die("poll failed: %m");
-			else if (!ret && state == 2)
+			else if (!ret && state == STATE_WRITE_CLEAR)
 				break;
 		}
 
@@ -234,22 +239,22 @@ void initwtp(int escape_seq)
 		len += ret;
 
 		switch (state) {
-		case 0:
+		case STATE_ESCAPE:
 			if (buf[len - 1] == 0x3e) {
-				state_store(1);
+				state_store(STATE_SEQ_ESCAPE);
 				printf("\e[0KReceived sync reply\n");
 				printf("Sending escape sequence with delay\n");
 			}
 			__attribute__((__fallthrough__));
 
-		case 1:
+		case STATE_SEQ_ESCAPE:
 			for (i = 8; i > 0; i--)
 				if (len >= i && !memcmp(buf + len - i, bootrom_prompt_reply, i))
 					break;
 
 			if (i > 0) {
 				if (i == 8 || (len - i >= 8 && !memcmp(buf + len - i - 8, bootrom_prompt_reply, 8))) {
-					state_store(3);
+					state_store(STATE_WRITE_WTP);
 					printf("\e[0KDetected BootROM command prompt\n");
 					printf("Sending wtp sequence\n");
 					seq_write_thread_stop(write_thread);
@@ -263,13 +268,13 @@ void initwtp(int escape_seq)
 			} else {
 				if (len >= 16) {
 					if (is_all_zeros(buf + len - 16, 16)) {
-						state_store(2);
+						state_store(STATE_WRITE_CLEAR);
 						printf("\e[0KReceived ack reply\n");
 						printf("Sending clearbuf sequence\n");
 						seq_write_thread_stop(write_thread);
 						ack_count = 0;
 					} else if (buf[len - 1] != 0x3e) {
-						state_store(0);
+						state_store(STATE_ESCAPE);
 						printf("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
 						fflush(stdout);
 					}
@@ -278,7 +283,7 @@ void initwtp(int escape_seq)
 			}
 			break;
 
-		case 2:
+		case STATE_WRITE_CLEAR:
 			if (is_all_zeros(buf, len)) {
 				/*
 				 * if we received too much ack replies after
@@ -294,14 +299,14 @@ void initwtp(int escape_seq)
 				}
 				len = 0;
 			} else {
-				state_store(0);
+				state_store(STATE_ESCAPE);
 				seq_write_thread_start(&write_thread);
 				printf("\e[0KInvalid reply, try restarting again\r");
 				fflush(stdout);
 			}
 			break;
 
-		case 3:
+		case STATE_WRITE_WTP:
 			/* 4095 bytes is size of kernel tty buffer, drop data from beginning of buffer and read remaining data */
 			if (len >= 4095) {
 				memmove(buf, buf + len - 7, 7);
@@ -310,7 +315,7 @@ void initwtp(int escape_seq)
 				if (!memcmp(buf + len - 8, "!\r\nwtp\r\n", 8)) {
 					done = 1;
 				} else {
-					state_store(0);
+					state_store(STATE_ESCAPE);
 					seq_write_thread_start(&write_thread);
 					printf("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
 					fflush(stdout);
