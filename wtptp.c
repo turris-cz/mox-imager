@@ -604,13 +604,14 @@ void change_baudrate(unsigned int baudrate)
 #endif
 	xtcsetattr2(wtpfd, &opts);
 	xtcgetattr2(wtpfd, &opts);
+#ifndef BOTHER
 	if ((opts.c_cflag & CBAUD) != cflag_speed)
 		die("Baudrate %u not supported", baudrate);
-#ifdef IBSHIFT
+# ifdef IBSHIFT
 	if (((opts.c_cflag >> IBSHIFT) & CBAUD) != B0)
 		die("Baudrate %u not supported", baudrate);
-#endif
-#ifdef BOTHER
+# endif
+#else
 	/* Check that set baudrate is in 3% tolerance */
 	if (!is_within_tolerance(opts.c_ospeed, baudrate, 3) ||
 	    !is_within_tolerance(opts.c_ispeed, baudrate, 3))
