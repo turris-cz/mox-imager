@@ -184,6 +184,7 @@ void initwtp(int escape_seq)
 	int ack_count;
 	u8 buf[8192];
 	int len, i;
+	int done;
 	int ret;
 
 	if (!escape_seq) {
@@ -210,8 +211,9 @@ void initwtp(int escape_seq)
 
 	len = 0;
 	ack_count = 0;
+	done = 0;
 
-	while (1) {
+	while (!done) {
 		if (state > 1) {
 			pfd.revents = 0;
 			ret = poll(&pfd, 1, 300);
@@ -227,13 +229,16 @@ void initwtp(int escape_seq)
 
 		len += ret;
 
-		if (state == 0 || state == 1) {
-			if (buf[len - 1] == 0x3e && state == 0) {
+		switch (state) {
+		case 0:
+			if (buf[len - 1] == 0x3e) {
 				state_store(1);
 				printf("\e[0KReceived sync reply\n");
 				printf("Sending escape sequence with delay\n");
 			}
+			__attribute__((__fallthrough__));
 
+		case 1:
 			for (i = 8; i > 0; i--)
 				if (len >= i && !memcmp(buf + len - i, bootrom_prompt_reply, i))
 					break;
@@ -267,7 +272,9 @@ void initwtp(int escape_seq)
 					len = 0;
 				}
 			}
-		} else if (state == 2) {
+			break;
+
+		case 2:
 			if (is_all_zeros(buf, len)) {
 				/*
 				 * if we received too much ack replies after
@@ -288,14 +295,16 @@ void initwtp(int escape_seq)
 				printf("\e[0KInvalid reply, try restarting again\r");
 				fflush(stdout);
 			}
-		} else if (state == 3) {
+			break;
+
+		case 3:
 			/* 4095 bytes is size of kernel tty buffer, drop data from beginning of buffer and read remaining data */
 			if (len >= 4095) {
 				memmove(buf, buf + len - 7, 7);
 				len = 7;
 			} else if (len >= 8) {
 				if (!memcmp(buf + len - 8, "!\r\nwtp\r\n", 8)) {
-					break;
+					done = 1;
 				} else {
 					state_store(0);
 					seq_write_thread_start(&write_thread);
@@ -303,6 +312,10 @@ void initwtp(int escape_seq)
 					fflush(stdout);
 				}
 			}
+			break;
+
+		default:
+			__builtin_unreachable();
 		}
 	}
 
