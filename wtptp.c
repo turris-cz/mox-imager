@@ -105,9 +105,9 @@ static void seq_write(const void *seq, size_t len)
 
 static void *seq_write_handler(void *ptr __attribute__((unused)))
 {
-	const u8 esc_seq[] = {0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-	const u8 clr_seq[] = {0x0d, 0x0d, 0x0d, 0x0d};
-	const u8 wtp_seq[] = {0x03, 'w', 't', 'p', '\r'};
+	const u8 esc_seq[] = { 0xbb, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77 };
+	const u8 clr_seq[] = { 0x0d, 0x0d, 0x0d, 0x0d };
+	const u8 wtp_seq[] = { 0x03, 'w', 't', 'p', '\r' };
 	int prev_state = state_load();
 	int new_state;
 
@@ -178,7 +178,9 @@ static int is_all_zeros(const u8 *buf, int len)
  */
 void initwtp(int escape_seq)
 {
-	const u8 bootrom_prompt_reply[] = {'>', '>', 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+	const u8 bootrom_prompt_reply[] = {
+		'>', '>', 0x22, 0x33, 0x44, 0x55, 0x66, 0x77
+	};
 	pthread_t write_thread;
 	struct termios2 opts;
 	struct pollfd pfd;
@@ -266,7 +268,7 @@ void initwtp(int escape_seq)
 						printf("Sending clearbuf sequence\n");
 						seq_write_thread_stop(write_thread);
 						ack_count = 0;
-					} else if (buf[len-1] != 0x3e) {
+					} else if (buf[len - 1] != 0x3e) {
 						state_store(0);
 						printf("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
 						fflush(stdout);
