@@ -203,6 +203,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 	wtmi = image_find(name2id("WTMI"));
 	obmi = image_new(NULL, 0, name2id("OBMI"));
 	obmi->size = MOX_ENV_OFFSET - MOX_U_BOOT_OFFSET;
+	//obmi->size = 86400000;
 
 	buf = xmalloc(MOX_U_BOOT_OFFSET);
 	memset(buf, 0, MOX_U_BOOT_OFFSET);
@@ -291,7 +292,7 @@ static void do_get_otp_hash(u32 *hash)
 
 	tim = image_find(TIMH_ID);
 	/* check if the TIM is correct by parsing it */
-	tim_parse(tim, NULL, gpp_disassemble, NULL);
+	tim_parse(tim, NULL, 0, NULL);
 	tim_get_otp_hash(tim, hash);
 }
 
