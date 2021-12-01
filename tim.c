@@ -983,6 +983,7 @@ void tim_get_otp_hash(image_t *tim, u32 *hash)
 {
 	timhdr_t *timhdr;
 	platds_t *platds;
+	u32 tmp[16];
 
 	timhdr = (void *) tim->data;
 
@@ -991,8 +992,8 @@ void tim_get_otp_hash(image_t *tim, u32 *hash)
 
 	platds = (void *) tim->data + tim->size - sizeof(platds_t);
 
-	key_hash(HASH_SHA256, hash, platds->ECDSA.pub.x, platds->ECDSA.pub.y,
-		 1);
+	key_hash(HASH_SHA256, tmp, platds->ECDSA.pub.x, platds->ECDSA.pub.y, 1);
+	memcpy(hash, tmp, 32);
 }
 
 void tim_sign(image_t *tim, EC_KEY *key)
