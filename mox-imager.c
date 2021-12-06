@@ -297,19 +297,26 @@ static void do_get_otp_hash(u32 *hash)
 }
 
 static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
-		      const char *mac_address, const char *board_version,
-		      const char *otp_hash)
+		      const char *mac_address, const char *board,
+		      const char *board_version, const char *otp_hash)
 {
 	u64 mac, sn;
-	u32 bv;
+	u32 bv, bt;
 	char *end;
 
 	sn = strtoull(serial_number, &end, 16);
 	if (*end)
 		die("Invalid serial number \"%s\"", serial_number);
 
+	if (!strcmp(board, "MOX"))
+		bt = 0;
+	else if (!strcmp(board, "RIPE"))
+		bt = 2;
+	else
+		die("Invalid board \"%s\"", board);
+
 	bv = strtoul(board_version, &end, 10);
-	if (*end || bv > 0xff)
+	if (*end || bv > 0x3f)
 		die("Invalid board version \"%s\"", board_version);
 
 	mac = mac2u64(mac_address);
@@ -322,7 +329,7 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 	mbd->serial_number_high = htole32(sn >> 32);
 	mbd->mac_addr_low = htole32(mac & 0xffffffff);
 	mbd->mac_addr_high = htole32(mac >> 32);
-	mbd->board_version = htole32(bv);
+	mbd->board_version = htole32((bt << 6) | bv);
 
 	if (otp_hash) {
 		/* if OTP hash is given as arg, parse it */
@@ -362,6 +369,7 @@ static void help(void)
 		"  -d, --deploy                                deploy device (write OTP memory)\n"
 		"      --serial-number=SN                      serial number to write to OTP memory\n"
 		"      --mac-address=MAC                       MAC address to write to OTP memory\n"
+		"      --board=MOX/RIPE                        board type to write to OTP memory\n"
 		"      --board-version=BV                      board version to write to OTP memory\n"
 		"      --otp-hash=HASH                         secure firmware hash as given by --get-otp-hash\n"
 		"  -g, --gen-key=KEY                           generate ECDSA-521 private key to file KEY\n"
@@ -390,6 +398,7 @@ static const struct option long_options[] = {
 	{ "deploy",			no_argument,		0,	'd' },
 	{ "serial-number",		required_argument,	0,	'N' },
 	{ "mac-address",		required_argument,	0,	'M' },
+	{ "board",			required_argument,	0,	'Z' },
 	{ "board-version",		required_argument,	0,	'B' },
 	{ "otp-hash",			required_argument,	0,	'H' },
 	{ "gen-key",			required_argument,	0,	'g' },
@@ -407,7 +416,8 @@ static const struct option long_options[] = {
 int main(int argc, char **argv)
 {
 	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey,
-		   *serial_number, *mac_address, *board_version, *otp_hash;
+		   *serial_number, *mac_address, *board, *board_version,
+		   *otp_hash;
 	int sign, hash_a53_firmware, no_a53_firmware, otp_read, deploy,
 	    get_otp_hash, create_trusted_image, create_untrusted_image,
 	    send_escape, baudrate;
@@ -416,7 +426,7 @@ int main(int argc, char **argv)
 	int nimages, nimages_timn, images_given, trusted;
 
 	tty = fdstr = output = keyfile = seed = genkey = serial_number =
-              mac_address = board_version = otp_hash = NULL;
+              mac_address = board = board_version = otp_hash = NULL;
 	sign = hash_a53_firmware = no_a53_firmware = otp_read = deploy =
 	       get_otp_hash = create_trusted_image = create_untrusted_image =
 	       send_escape = baudrate = 0;
@@ -481,6 +491,11 @@ int main(int argc, char **argv)
 			if (mac_address)
 				die("Mac address already given");
 			mac_address = optarg;
+			break;
+		case 'Z':
+			if (board)
+				die("Board already given");
+			board = optarg;
 			break;
 		case 'B':
 			if (board_version)
@@ -555,8 +570,8 @@ int main(int argc, char **argv)
 	if (otp_read && deploy)
 		die("Options to read OTP and deploy cannot be used together");
 
-	if (deploy && (!serial_number || !mac_address || !board_version))
-		die("Serial number, MAC address and board version must be given when deploying device");
+	if (deploy && (!serial_number || !mac_address || !board || !board_version))
+		die("Serial number, MAC address, board and board version must be given when deploying device");
 
 	if (genkey) {
 		if (!seed)
@@ -600,7 +615,7 @@ int main(int argc, char **argv)
 		mbd = find_mbd();
 
 		if (deploy)
-			do_deploy(mbd, serial_number, mac_address, board_version, otp_hash);
+			do_deploy(mbd, serial_number, mac_address, board, board_version, otp_hash);
 		else
 			mbd->op = 0;
 
