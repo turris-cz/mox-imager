@@ -935,6 +935,20 @@ void uart_deploy(void)
 	printf("Serial Number: %.*s\n", 16, buf);
 
 	eccread(buf, 4);
+	if (!memcmp(buf, "BTYP", 4)) {
+		unsigned long btype;
+
+		eccread(buf, 2);
+		buf[2] = '\0';
+		btype = strtol((char *)buf, NULL, 16);
+
+		printf("Board type: %lu (%s)\n", btype, btype == 0 ? "MOX" :
+							btype == 2 ? "RIPE" :
+								     "unknown");
+
+		eccread(buf, 4);
+	}
+
 	if (memcmp(buf, "BVER", 4))
 		goto wrong;
 
