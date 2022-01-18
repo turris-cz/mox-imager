@@ -986,7 +986,8 @@ wrong:
 	printf("FAIL%.*s\n", 13, buf);
 }
 
-static int uart_terminal_pipe(int in, int out, const char *quit, int *s)
+static int uart_terminal_pipe(int in, int out, const char *quit, int *s,
+			      const char *kbs, int *k)
 {
 	char buf[128];
 	ssize_t nin, nout, noff;
@@ -997,23 +998,60 @@ static int uart_terminal_pipe(int in, int out, const char *quit, int *s)
 
 	noff = 0;
 
-	if (quit) {
+	if (quit || kbs) {
 		int i;
 
 		for (i = 0; i < nin; i++) {
-			if (buf[i] == quit[*s]) {
+			if (quit && buf[i] == quit[*s]) {
 				(*s)++;
 				if (!quit[*s]) {
 					nin = i - *s;
 					break;
 				}
-			} else {
+			} else if (quit) {
 				*s = 0;
+			}
+
+			if (kbs && buf[i] == kbs[*k]) {
+				(*k)++;
+				if (!kbs[*k]) {
+					/*
+					 * Write everything before the backspace
+					 * sequence.
+					 */
+					while (i - *k > noff) {
+						nout = write(out, buf + noff,
+							     i - *k - noff);
+						if (nout < 0 && errno == EINTR)
+							continue;
+						if (nout <= 0)
+							return -1;
+						noff += nout;
+					}
+
+					/*
+					 * Replace backspace key by '\b' (0x08)
+					 * byte which is the only recognized
+					 * backspace byte by Marvell BootROM.
+					 */
+					if (write(out, "\x08", 1) < 0)
+						return -1;
+					noff = i + 1;
+					*k = 0;
+				}
+			} else if (kbs) {
+				*k = 0;
 			}
 		}
 
-		if (i == nin)
-			nin -= *s;
+		if (i == nin) {
+			i = 0;
+			if (quit && i < *s)
+				i = *s;
+			if (kbs && i < *k)
+				i = *k;
+			nin -= i;
+		}
 	}
 
 	while (nin > noff) {
@@ -1028,10 +1066,13 @@ static int uart_terminal_pipe(int in, int out, const char *quit, int *s)
 	return 0;
 }
 
+const char *uart_terminal_kbs = NULL;
+
 void uart_terminal(void) {
 	const char *quit = "\34c";
+	const char *kbs = uart_terminal_kbs;
 	struct termios2 otio, tio;
-	int in, s;
+	int in, s, k;
 
 	if (wtpfd < 0)
 		return;
@@ -1049,6 +1090,7 @@ void uart_terminal(void) {
 	}
 
 	s = 0;
+	k = 0;
 
 	do {
 		fd_set rfds;
@@ -1068,13 +1110,13 @@ void uart_terminal(void) {
 			break;
 
 		if (FD_ISSET(wtpfd, &rfds)) {
-			if (uart_terminal_pipe(wtpfd, STDOUT_FILENO, NULL,
-					       NULL))
+			if (uart_terminal_pipe(wtpfd, STDOUT_FILENO,
+					       NULL, NULL, NULL, NULL))
 				break;
 		}
 
 		if (in >= 0 && FD_ISSET(in, &rfds)) {
-			if (uart_terminal_pipe(in, wtpfd, quit, &s))
+			if (uart_terminal_pipe(in, wtpfd, quit, &s, kbs, &k))
 				break;
 		}
 	} while (quit[s] != 0);

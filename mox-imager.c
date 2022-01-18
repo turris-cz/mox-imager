@@ -17,6 +17,7 @@
 #include <time.h>
 #include <getopt.h>
 #include <openssl/ec.h>
+#include <term.h>
 #include "tim.h"
 #include "utils.h"
 #include "wtptp.h"
@@ -419,7 +420,7 @@ int main(int argc, char **argv)
 		   *otp_hash;
 	int sign, hash_a53_firmware, no_a53_firmware, otp_read, deploy,
 	    get_otp_hash, create_trusted_image, create_untrusted_image,
-	    send_escape, baudrate;
+	    send_escape, baudrate, dummy;
 	u32 image_bootfs = 0, partition;
 	image_t *timh = NULL, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
@@ -479,6 +480,32 @@ int main(int argc, char **argv)
 			deploy = 1;
 			break;
 		case 't':
+			/*
+			 * Get sequence for backspace key used by the current
+			 * terminal. Every occurance of this sequence will be
+			 * replaced by '\b' byte which is the only recognized
+			 * backspace byte by Marvell BootROM.
+			 *
+			 * Note that we cannot read this sequence from termios
+			 * c_cc[VERASE] as VERASE is valid only when ICANON is
+			 * set in termios c_lflag, which is not case for us.
+			 *
+			 * Also most terminals do not set termios c_cc[VERASE]
+			 * as c_cc[VERASE] can specify only one-byte sequence
+			 * and instead let applications to read (possible
+			 * multi-byte) sequence for backspace key from "kbs"
+			 * terminfo database based on $TERM env variable.
+			 *
+			 * So read "kbs" from terminfo database via tigetstr()
+			 * call after successfull setupterm(). Most terminals
+			 * use byte 0x7F for backspace key, so replacement with
+			 * '\b' is required.
+			 */
+			if (setupterm(NULL, STDOUT_FILENO, &dummy) == 0) {
+				uart_terminal_kbs = tigetstr("kbs");
+				if (uart_terminal_kbs == (char *)-1)
+					uart_terminal_kbs = NULL;
+			}
 			terminal_on_exit = 1;
 			break;
 		case 'N':

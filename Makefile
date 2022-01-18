@@ -9,7 +9,7 @@ ifeq ($(STATIC_LIBCRYPTO), 1)
 else
 	LDFLAGS_LIBCRYPTO := -lcrypto
 endif
-LDFLAGS := -lm $(LDFLAGS_LIBCRYPTO)
+LDFLAGS := -lm -ltinfo $(LDFLAGS_LIBCRYPTO)
 
 SRCS = $(filter-out gppc.c bin2c.c wtmi.c,$(wildcard *.c))
 DEPS = $(patsubst %.c,%.d,$(SRCS))
