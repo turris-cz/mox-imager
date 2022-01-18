@@ -988,39 +988,39 @@ wrong:
 
 static int uart_terminal_pipe(int in, int out, const char *quit, int *s)
 {
-	char _buf[128], *buf = _buf;
-	ssize_t nin, nout;
+	char buf[128];
+	ssize_t nin, nout, noff;
 
-	nin = read(in, buf, sizeof(_buf));
+	nin = read(in, buf, sizeof(buf));
 	if (nin <= 0)
 		return -1;
+
+	noff = 0;
 
 	if (quit) {
 		int i;
 
 		for (i = 0; i < nin; i++) {
-			if (*buf == quit[*s]) {
+			if (buf[i] == quit[*s]) {
 				(*s)++;
-				if (!quit[*s])
-					return 0;
-				buf++;
-				nin--;
-			} else {
-				while (*s > 0) {
-					nout = write(out, quit, *s);
-					if (nout <= 0)
-						return -1;
-					(*s) -= nout;
+				if (!quit[*s]) {
+					nin = i - *s;
+					break;
 				}
+			} else {
+				*s = 0;
 			}
 		}
+
+		if (i == nin)
+			nin -= *s;
 	}
 
-	while (nin > 0) {
-		nout = write(out, buf, nin);
+	while (nin > noff) {
+		nout = write(out, buf + noff, nin - noff);
 		if (nout <= 0)
 			return -1;
-		nin -= nout;
+		noff += nout;
 	}
 
 	return 0;
