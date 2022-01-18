@@ -5,7 +5,7 @@ WTMI_PATH := ../wtmi
 CC := gcc
 CFLAGS := -O2 -Wall -pthread
 ifeq ($(STATIC_LIBCRYPTO), 1)
-	LDFLAGS_LIBCRYPTO := -l:libcrypto.a -ldl -pthread
+	LDFLAGS_LIBCRYPTO := -l:libcrypto.a -ldl
 else
 	LDFLAGS_LIBCRYPTO := -lcrypto
 endif
