@@ -669,8 +669,12 @@ static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
 		die("Failed cmd[%02x %02x %02x]", cmd, seq, cid);
 
 	memcpy(resp, chk, 3);
-	xread(((void *) resp) + 3, 3);
+	xread(((void *) resp) + 3, 2);
 
+	if (resp->status > 0x2)
+		die("Unknown response status code 0x%x", resp->status);
+
+	xread(((void *) resp) + 5, 1);
 	if (resp->len > 0)
 		xread(((void *) resp) + 6, resp->len);
 }
