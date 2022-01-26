@@ -1018,6 +1018,8 @@ static int uart_terminal_pipe(int in, int out, const char *quit, int *s)
 
 	while (nin > noff) {
 		nout = write(out, buf + noff, nin - noff);
+		if (nout < 0 && errno == EINTR)
+			continue;
 		if (nout <= 0)
 			return -1;
 		noff += nout;
