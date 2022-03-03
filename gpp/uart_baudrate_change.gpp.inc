@@ -13,10 +13,13 @@ LOAD_SM_VAL SM0 0x20
 LOAD_SM_VAL SM1 0x1FFFF000
 CALL(UArx, Ru_1)
 
+MOV_SM_SM SM14 SM0
+
+; if no bytes were received, skip
+TEST_SM_AND_BRANCH SM0 0xFFFFFFFF 0 == uEND
+
 ; we are expecting preamble or baudrate change request, exactly 4 bytes
 TEST_SM_AND_BRANCH SM0 0xFFFFFFFF 4 != uTXB
-
-MOV_SM_SM SM14 SM0
 
 LOAD_SM_VAL SM0 0x1FFFF000
 CALL(SERv, Ru_2)
