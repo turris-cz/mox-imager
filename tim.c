@@ -682,6 +682,9 @@ void tim_add_image(image_t *tim, image_t *image, u32 after, u32 loadaddr,
 			prev = img;
 	}
 
+	if (!prev)
+		die("Cannot add imginfo if no imginfo exists!");
+
 	this = prev + 1;
 	next = prev + 2;
 	memmove(next, this, oldtimsize - ((void *) this - (void *) timhdr));
