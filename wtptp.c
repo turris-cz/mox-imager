@@ -69,12 +69,27 @@ static void xread(void *buf, size_t size)
 {
 	ssize_t res;
 	size_t rd;
+	struct pollfd pfd;
+
+	pfd.fd = wtpfd;
+	pfd.events = POLLIN;
 
 	rd = 0;
 	while (rd < size) {
+		pfd.revents = 0;
+		res = poll(&pfd, 1, 10 * 1000);
+		if (res == 0)
+			die("Timeout while waiting for data!");
+		else if (res < 0)
+			die("Cannot poll: %m");
+
+		if (pfd.revents & POLLERR)
+			die("File descriptor error!");
+
 		res = read(wtpfd, buf + rd, size - rd);
 		if (res <= 0)
 			die("Cannot read %zu bytes: %m", size);
+
 		rd += res;
 	}
 }
