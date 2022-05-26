@@ -1017,6 +1017,42 @@ static int uart_terminal_pipe(int in, int out, const char *quit, int *s,
 		int i;
 
 		for (i = 0; i < nin; i++) {
+			if ((quit || kbs) && (!quit || buf[i] != quit[*s]) &&
+			    (!kbs || buf[i] != kbs[*k])) {
+				const char *prefix;
+				ssize_t poff;
+				int plen;
+
+				if (quit && kbs) {
+					prefix = (*s >= *k) ? quit : kbs;
+					plen = (*s >= *k) ? *s : *k;
+				} else if (quit) {
+					prefix = quit;
+					plen = *s;
+				} else {
+					prefix = kbs;
+					plen = *k;
+				}
+
+				if (plen > i) {
+					/*
+					 * Write prefix of the quit/backspace
+					 * sequence from the end of buffer of
+					 * the previous read() call.
+					 */
+					poff = 0;
+					while (plen - i > poff) {
+						nout = write(out, prefix + poff,
+							     plen - i - poff);
+						if (nout < 0 && errno == EINTR)
+							continue;
+						if (nout <= 0)
+							return -1;
+						poff += nout;
+					}
+				}
+			}
+
 			if (quit && buf[i] == quit[*s]) {
 				(*s)++;
 				if (!quit[*s]) {
@@ -1059,6 +1095,11 @@ static int uart_terminal_pipe(int in, int out, const char *quit, int *s,
 			}
 		}
 
+		/*
+		 * Drop prefix of the quit/backspace sequence from the end of
+		 * the buffer. If quit/backspace sequence is not later detected
+		 * then dropped prefix will be inserted.
+		 */
 		if (i == nin) {
 			i = 0;
 			if (quit && i < *s)
