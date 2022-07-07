@@ -2,6 +2,11 @@
 
 WTMI_PATH := ../wtmi
 
+override TIM_VERSION = $(shell git describe --always --dirty --tags)
+ifndef TIM_VERSION
+$(error Repository is without git tags, please do a full git clone again)
+endif
+
 CC := gcc
 CFLAGS := -O2 -Wall -pthread
 ifeq ($(STATIC_LIBCRYPTO), 1)
@@ -23,10 +28,18 @@ GPPS_DEPS = $(patsubst %.c,%.d,$(GPPS))
 all: mox-imager
 
 clean:
-	rm -f mox-imager $(OBJS) bin2c gppc bin2c.o $(GPPS) $(patsubst %.c,%.gpp.bin,$(GPPS)) $(patsubst %.c,%.gpp.pre,$(GPPS)) $(DEPS) $(GPPS_DEPS)
+	rm -f mox-imager $(OBJS) bin2c gppc bin2c.o $(GPPS) $(patsubst %.c,%.gpp.bin,$(GPPS)) $(patsubst %.c,%.gpp.pre,$(GPPS)) $(DEPS) $(GPPS_DEPS) gpp/version gpp/version.gpp.inc
 
 mox-imager: $(OBJS)
 	$(CC) $(CFLAGS) -o mox-imager $(OBJS) $(LDFLAGS)
+
+$(shell test "`cat gpp/version 2>/dev/null`" = "$(TIM_VERSION)" || echo $(TIM_VERSION) > gpp/version)
+
+gpp/version.gpp.inc: gpp/version_gen gpp/version
+	gpp/version_gen `cat gpp/version` > gpp/version.gpp.inc
+
+gpp/gpp1.gpp: gpp/version.gpp.inc
+gpp/gpp1_trusted.gpp: gpp/version.gpp.inc
 
 tim.c: $(GPPS)
 

@@ -12,3 +12,5 @@ AND_VAL: 0xC0015600 0xFFFFFEFF
 OR_VAL: 0xC0015600 0x00000600
 ; On A3700 DB south bridge GBE core voltage is 2.5V.
 OR_VAL: 0xC001A400 0x00000040
+
+#include "version.gpp.inc"

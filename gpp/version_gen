@@ -1,0 +1,22 @@
+#!/bin/bash
+VERSTR=${1}
+test -z "$VERSTR" && exit 1
+STR=$'\r'$'\n'$'\r'$'\n'"TIM-$VERSTR"$'\r'$'\n'
+LEN=${#STR}
+for (( i=0; i<$LEN; ))
+do
+	# TXFIFO has space for 32 characters and it will take 3ms to transmit them on 115200 baudrate
+	echo "WAIT_FOR_BIT_SET: 0xC001200C 0x40 3   ; Wait 3ms for TX empty"
+	for (( j=0; j<32 && i<$LEN; j++, i++ ))
+	do
+		CHARACTER=${STR:$i:1}
+		HEXVAL=$(printf "0x%02X" \'"$CHARACTER")
+		if test $(($HEXVAL)) -ge $((0x20)) -a $(($HEXVAL)) -le $((0x7E)); then
+			PRINTVAL=$CHARACTER
+		else
+			PRINTVAL=?
+		fi
+		echo "WRITE: 0xC0012004" $HEXVAL "               ; Print character '$PRINTVAL'"
+	done
+done
+echo "WAIT_FOR_BIT_SET: 0xC001200C 0x40 3   ; Wait 3ms for TX empty"
