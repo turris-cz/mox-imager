@@ -7,3 +7,5 @@ bin2c
 gppc
 mox-imager
 uart-images
+gpp/version
+gpp/version.gpp.inc
