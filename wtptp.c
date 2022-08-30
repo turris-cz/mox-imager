@@ -442,7 +442,7 @@ void closewtp(void)
 static int read_until(const u8 *until, size_t ulen, size_t max)
 {
 	int printed = 0;
-	size_t i, pos;
+	size_t i, j, pos;
 	u8 buf[ulen], last;
 	int istty;
 
@@ -455,10 +455,21 @@ static int read_until(const u8 *until, size_t ulen, size_t max)
 			++pos;
 		} else {
 			if (istty) {
-				if (!printed)
-					printf("\033[33;1m");
-				printf("%.*s", (int)pos + 1, (char *)buf);
-				printed = 1;
+				if (printed) {
+					printf("%.*s", (int)pos + 1,
+					       (char *)buf);
+				} else {
+					for (j = 0; j < pos + 1; j++)
+						if (buf[j] != '\r' &&
+						    buf[j] != '\n')
+							break;
+					if (j < pos + 1) {
+						printf("\n\033[33;1m%.*s",
+						       (int)(pos + 1 - j),
+						       (char *)buf + j);
+						printed = 1;
+					}
+				}
 				last = buf[pos];
 			}
 			pos = 0;
@@ -471,7 +482,7 @@ static int read_until(const u8 *until, size_t ulen, size_t max)
 	if (printed) {
 		if (last != '\n')
 			putchar('\n');
-		printf("\033[0m");
+		printf("\n\033[0m");
 		fflush(stdout);
 	}
 
