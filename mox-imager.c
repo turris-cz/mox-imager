@@ -432,7 +432,7 @@ int main(int argc, char **argv)
 	       send_escape = baudrate = 0;
 
 	while (1) {
-		char c;
+		int c;
 
 		c = getopt_long(argc, argv, "D:b:F:Eo:k:r:Rdg:sStunh",
 				long_options, NULL);
