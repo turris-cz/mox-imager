@@ -10,6 +10,7 @@
 
 extern EC_KEY *sharand_generate_key(void);
 extern EC_KEY *load_key(const char *path);
+extern char *priv_key_to_str(const EC_KEY *key);
 extern void save_key(const char *path, const EC_KEY *key);
 extern void key_get_tim_coords(const EC_KEY *key, u32 *x, u32 *y);
 

@@ -73,7 +73,10 @@ static void generate_key(const char *keypath, const char *seedpath)
 	munmap(seed, st.st_size);
 
 	key = sharand_generate_key();
-	save_key(keypath, key);
+	if (keypath)
+		save_key(keypath, key);
+	else
+		printf("%s\n", priv_key_to_str(key));
 	EC_KEY_free(key);
 }
 
@@ -372,7 +375,7 @@ static void help(void)
 		"      --board=MOX/RIPE                        board type to write to OTP memory\n"
 		"      --board-version=BV                      board version to write to OTP memory\n"
 		"      --otp-hash=HASH                         secure firmware hash as given by --get-otp-hash\n"
-		"  -g, --gen-key=KEY                           generate ECDSA-521 private key to file KEY\n"
+		"  -g, --gen-key[=KEY]                         generate ECDSA-521 private key to file KEY or to stdout\n"
 		"  -s, --sign                                  sign TIM image with ECDSA-521 private key\n"
 		"      --create-trusted-image=SPI/UART/EMMC    create secure image for SPI / UART (private key required)\n"
 		"      --create-untrusted-image=SPI/UART/EMMC  create untrusted secure image (no private key required)\n"
@@ -401,7 +404,7 @@ static const struct option long_options[] = {
 	{ "board",			required_argument,	0,	'Z' },
 	{ "board-version",		required_argument,	0,	'B' },
 	{ "otp-hash",			required_argument,	0,	'H' },
-	{ "gen-key",			required_argument,	0,	'g' },
+	{ "gen-key",			optional_argument,	0,	'g' },
 	{ "sign",			no_argument,		0,	's' },
 	{ "create-trusted-image",	required_argument,	0,	'c' },
 	{ "create-untrusted-image",	required_argument,	0,	'C' },
@@ -415,21 +418,21 @@ static const struct option long_options[] = {
 
 int main(int argc, char **argv)
 {
-	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey,
+	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey_output,
 		   *serial_number, *mac_address, *board, *board_version,
 		   *otp_hash;
 	int sign, hash_a53_firmware, no_a53_firmware, otp_read, deploy,
 	    get_otp_hash, create_trusted_image, create_untrusted_image,
-	    send_escape, baudrate, dummy;
+	    send_escape, baudrate, genkey, dummy;
 	u32 image_bootfs = 0, partition;
 	image_t *timh = NULL, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
 
-	tty = fdstr = output = keyfile = seed = genkey = serial_number =
+	tty = fdstr = output = keyfile = seed = genkey_output = serial_number =
               mac_address = board = board_version = otp_hash = NULL;
 	sign = hash_a53_firmware = no_a53_firmware = otp_read = deploy =
 	       get_otp_hash = create_trusted_image = create_untrusted_image =
-	       send_escape = baudrate = 0;
+	       send_escape = baudrate = genkey = 0;
 
 	while (1) {
 		int c;
@@ -536,7 +539,8 @@ int main(int argc, char **argv)
 		case 'g':
 			if (genkey)
 				die("File to which generate key already given");
-			genkey = optarg;
+			genkey = 1;
+			genkey_output = optarg;
 			break;
 		case 's':
 			sign = 1;
@@ -605,7 +609,7 @@ int main(int argc, char **argv)
 		else if (optind < argc)
 			die("Images must not be given when generating key");
 
-		generate_key(genkey, seed);
+		generate_key(genkey_output, seed);
 		exit(EXIT_SUCCESS);
 	}
 

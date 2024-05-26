@@ -169,6 +169,16 @@ EC_KEY *load_key(const char *path)
 	return dec2key(buf);
 }
 
+char *priv_key_to_str(const EC_KEY *key)
+{
+	char *priv = BN_bn2dec(EC_KEY_get0_private_key(key));
+
+	if (!priv)
+		die("Cannot convert private key");
+
+	return priv;
+}
+
 void save_key(const char *path, const EC_KEY *key)
 {
 	int fd;
@@ -179,9 +189,7 @@ void save_key(const char *path, const EC_KEY *key)
 	if (fd < 0)
 		die("Cannot open key file %s: %m", path);
 
-	priv = BN_bn2dec(EC_KEY_get0_private_key(key));
-	if (!priv)
-		die("Cannot convert private key");
+	priv = priv_key_to_str(key);
 
 	wr = write(fd, priv, strlen(priv));
 	if (wr < 0)
