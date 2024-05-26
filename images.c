@@ -3,6 +3,7 @@
  * 2018 by Marek Behun <marek.behun@nic.cz>
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,7 +20,7 @@
 
 static image_t images[32];
 
-image_t *image_find(u32 id)
+static image_t *_image_find(u32 id)
 {
 	int i;
 
@@ -28,7 +29,22 @@ image_t *image_find(u32 id)
 			return images + i;
 	}
 
+	return NULL;
+}
+
+image_t *image_find(u32 id)
+{
+	image_t *img = _image_find(id);
+
+	if (img)
+		return img;
+
 	die("Cannot find image %s (%08x)", id2name(id), id);
+}
+
+_Bool image_exists(u32 id)
+{
+	return _image_find(id);
 }
 
 void image_hash(u32 alg, void *buf, size_t size, void *out, u32 hashaddr)
@@ -215,11 +231,23 @@ static int do_load(void *data, size_t data_size, u32 hdr_addr)
 				if (wait_ids[i])
 					break;
 
-			if (i == 32)
-				die("Invalid image file");
-
-			id = wait_ids[i];
-			wait_ids[i] = 0;
+			if (i == 32) {
+				/*
+				 * If OBMI image was not yet loaded and this
+				 * image contains "Trusted Firmware", consider
+				 * it an OBMI image.
+				 */
+				if (!image_exists(OBMI_ID) &&
+				    memmem(data, data_size, "Trusted Firmware",
+					   strlen("Trusted Firmware"))) {
+					id = OBMI_ID;
+				} else {
+					die("Invalid image file");
+				}
+			} else {
+				id = wait_ids[i];
+				wait_ids[i] = 0;
+			}
 		}
 
 		image_new(data, data_size, id);
