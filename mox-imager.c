@@ -27,10 +27,21 @@
 
 #include "wtmi.c"
 
-#define MOX_TIMN_OFFSET		0x1000
-#define MOX_WTMI_OFFSET		0x4000
-#define MOX_U_BOOT_OFFSET	0x20000
-#define MOX_ENV_OFFSET		0x180000
+struct settings {
+	u32 timn_offset;
+	u32 wtmi_offset;
+	u32 obmi_offset;
+	u32 obmi_max_size;
+};
+
+static const struct settings def_settings = {
+	.timn_offset = 0x1000,
+	.wtmi_offset = 0x4000,
+	.obmi_offset = 0x20000,
+	.obmi_max_size = 0x160000,
+};
+
+static struct settings settings = def_settings;
 
 static int gpp_disassemble;
 int terminal_on_exit = 0;
@@ -171,7 +182,7 @@ static image_t *obmi_for_creation(int hash_obmi)
 		obmi = image_find(OBMI_ID);
 	} else {
 		obmi = image_new(NULL, 0, OBMI_ID);
-		obmi->size = MOX_ENV_OFFSET - MOX_U_BOOT_OFFSET;
+		obmi->size = settings.obmi_max_size;
 	}
 
 	return obmi;
@@ -184,7 +195,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	image_t *timh, *timn, *wtmi, *obmi;
 	void *buf;
 	int fd;
-	u32 timh_loadaddr, timn_loadaddr;
+	u32 timh_loadaddr, timn_loadaddr, size;
 
 	if (bootfs == BOOTFS_SPINOR || bootfs == BOOTFS_EMMC) {
 		timh_loadaddr = 0x20006000;
@@ -199,15 +210,16 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	wtmi = image_find(name2id("WTMI"));
 	obmi = obmi_for_creation(hash_obmi);
 
-	buf = xmalloc(MOX_U_BOOT_OFFSET);
-	memset(buf, 0, MOX_U_BOOT_OFFSET);
+	size = settings.obmi_offset;
+	buf = xmalloc(size);
+	memset(buf, 0, size);
 
 	key = load_key(keyfile);
 
 	timh = image_new(NULL, 0, TIMH_ID);
 	tim_minimal_image(timh, 1, TIMH_ID, 0);
 	tim_set_boot(timh, bootfs);
-	tim_imap_pkg_addr_set(timh, name2id("CSKT"), MOX_TIMN_OFFSET, partition);
+	tim_imap_pkg_addr_set(timh, name2id("CSKT"), settings.timn_offset, partition);
 	tim_image_set_loadaddr(timh, TIMH_ID, timh_loadaddr);
 	tim_add_key(timh, name2id("CSK0"), key);
 	tim_sign(timh, key);
@@ -219,18 +231,18 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
-	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
-	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
+	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, settings.wtmi_offset, partition, 1);
+	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, settings.obmi_offset,
 		      partition, hash_obmi);
 	tim_sign(timn, key);
 	tim_parse(timn, NULL, gpp_disassemble, NULL);
 
-	memcpy(buf + MOX_TIMN_OFFSET, timn->data, timn->size);
-	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
+	memcpy(buf + settings.timn_offset, timn->data, timn->size);
+	memcpy(buf + settings.wtmi_offset, wtmi->data, wtmi->size);
 
 	fd = open_and_truncate(output, 0);
 
-	write_or_die(output, fd, buf, MOX_U_BOOT_OFFSET);
+	write_or_die(output, fd, buf, size);
 	if (obmi->data)
 		write_or_die(output, fd, obmi->data, obmi->size);
 
@@ -243,28 +255,30 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 	image_t *timh, *wtmi, *obmi;
 	void *buf;
 	int fd;
+	u32 size;
 
 	wtmi = image_find(name2id("WTMI"));
 	obmi = obmi_for_creation(hash_obmi);
 
-	buf = xmalloc(MOX_U_BOOT_OFFSET);
-	memset(buf, 0, MOX_U_BOOT_OFFSET);
+	size = settings.obmi_offset;
+	buf = xmalloc(size);
+	memset(buf, 0, size);
 
 	timh = image_new(NULL, 0, TIMH_ID);
 	tim_minimal_image(timh, 0, TIMH_ID, 0);
-	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
-	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
+	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, settings.wtmi_offset, partition, 1);
+	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, settings.obmi_offset,
 		      partition, hash_obmi);
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
 	tim_parse(timh, NULL, gpp_disassemble, NULL);
 
 	memcpy(buf, timh->data, timh->size);
-	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
+	memcpy(buf + settings.wtmi_offset, wtmi->data, wtmi->size);
 
 	fd = open_and_truncate(output, 0);
 
-	write_or_die(output, fd, buf, MOX_U_BOOT_OFFSET);
+	write_or_die(output, fd, buf, size);
 	if (obmi->data)
 		write_or_die(output, fd, obmi->data, obmi->size);
 
@@ -379,6 +393,26 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 	}
 }
 
+static u32 parse_u32_opt(const char *opt, const char *arg, u32 min, u32 max)
+{
+	unsigned long val;
+	char *end;
+
+	if (!arg)
+		die("missing argument for option '--%s'", opt);
+
+	val = strtoul(arg, &end, 0);
+
+	if (*arg == '\0' || *end != '\0')
+		die("invalid argument '%s' for integer option '--%s'", arg, opt);
+	else if (val > max)
+		die("value %s of option '--%s' exceeds maximum value %#x", arg, opt, max);
+	else if (val < min)
+		die("value %s of option '--%s' is below minimum value %#x", arg, opt, min);
+
+	return val;
+}
+
 static void help(void)
 {
 	fprintf(stdout,
@@ -406,10 +440,19 @@ static void help(void)
 		"      --get-otp-hash                          print OTP hash of given secure firmware image\n"
 		"  -u, --hash-a53-firmware                     save A53 firmware (TF-A + U-Boot) image hash to TIM\n"
 		"  -n, --no-a53-firmware                       remove A53 firmware (TF-A + U-Boot) image from TIM\n"
+		"      --timn-offset=OFFSET                    offset of TIMN header within TIM image (default: %#x)\n"
+		"      --wtmi-offset=OFFSET                    offset of WTMI image (default: %#x)\n"
+		"      --obmi-offset=OFFSET                    offset of OBMI image / A53 firmware (default: %#x)\n"
+		"      --obmi-max-size=SIZE                    maximum size of OBMI image / A53 firmware (default: %#x)\n"
 		"  -h, --help                                  show this help and exit\n"
-		"\n");
+		"\n", def_settings.timn_offset, def_settings.wtmi_offset, def_settings.obmi_offset, def_settings.obmi_max_size);
 	exit(EXIT_SUCCESS);
 }
+
+static const int timn_offset_opt = 256;
+static const int wtmi_offset_opt = 257;
+static const int obmi_offset_opt = 258;
+static const int obmi_max_size_opt = 259;
 
 static const struct option long_options[] = {
 	{ "device",			required_argument,	0,	'D' },
@@ -435,6 +478,10 @@ static const struct option long_options[] = {
 	{ "get-otp-hash",		no_argument,		0,	'G' },
 	{ "hash-a53-firmware",		no_argument,		0,	'u' },
 	{ "no-a53-firmware",		no_argument,		0,	'n' },
+	{ "timn-offset",		required_argument,	0,	timn_offset_opt },
+	{ "wtmi-offset",		required_argument,	0,	wtmi_offset_opt },
+	{ "obmi-offset",		required_argument,	0,	obmi_offset_opt },
+	{ "obmi-max-size",		required_argument,	0,	obmi_max_size_opt },
 	{ "help",			no_argument,		0,	'h' },
 	{ 0,				0,			0,	0 },
 };
@@ -595,6 +642,18 @@ int main(int argc, char **argv)
 		case 'n':
 			no_a53_firmware = 1;
 			break;
+		case timn_offset_opt:
+			settings.timn_offset = parse_u32_opt("timn-offset", optarg, 0x100, 0x4000);
+			break;
+		case wtmi_offset_opt:
+			settings.wtmi_offset = parse_u32_opt("wtmi-offset", optarg, 0x800, 0x20000);
+			break;
+		case obmi_offset_opt:
+			settings.obmi_offset = parse_u32_opt("obmi-offset", optarg, 0x1000, 0x100000);
+			break;
+		case obmi_max_size_opt:
+			settings.obmi_max_size = parse_u32_opt("obmi-max-size", optarg, 0, 0x1000000);
+			break;
 		case 'h':
 			help();
 			break;
@@ -682,7 +741,7 @@ int main(int argc, char **argv)
 		images_given = 1;
 
 		if (image_exists(OBMI_ID)) {
-			tim_add_image(timh, image_find(OBMI_ID), WTMI_ID, 0x64100000, MOX_U_BOOT_OFFSET, 0, 0);
+			tim_add_image(timh, image_find(OBMI_ID), WTMI_ID, 0x64100000, settings.obmi_offset, 0, 0);
 			++nimages;
 
 			/* tell WTMI deploy() to not reset the SoC after deployment */
