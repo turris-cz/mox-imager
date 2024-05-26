@@ -97,6 +97,20 @@ static void generate_key(const char *keypath, const char *seedpath)
 	EC_KEY_free(key);
 }
 
+static int open_and_truncate(const char *path, u32 size)
+{
+	int fd;
+
+	fd = open(path, O_RDWR | O_CREAT, 0644);
+	if (fd < 0)
+		die("Cannot open %s for writing: %m", path);
+
+	if (ftruncate(fd, size) < 0)
+		die("Cannot truncate %s to size %u: %m", path, size);
+
+	return fd;
+}
+
 static void save_flash_image(image_t *tim, const char *path)
 {
 	int i, fd;
@@ -115,12 +129,7 @@ static void save_flash_image(image_t *tim, const char *path)
 			maxaddr = endaddr;
 	}
 
-	fd = open(path, O_RDWR | O_CREAT, 0644);
-	if (fd < 0)
-		die("Cannot open %s for writing: %m", path);
-
-	if (ftruncate(fd, maxaddr) < 0)
-		die("Cannot truncate %s to size %u: %m", path, maxaddr);
+	fd = open_and_truncate(path, maxaddr);
 
 	data = mmap(NULL, maxaddr, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if (data == MAP_FAILED)
@@ -197,12 +206,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	memcpy(buf + MOX_TIMN_OFFSET, timn->data, timn->size);
 	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
 
-	fd = open(output, O_RDWR | O_CREAT, 0644);
-	if (fd < 0)
-		die("Cannot open %s for writing: %m", output);
-
-	if (ftruncate(fd, 0) < 0)
-		die("Cannot truncate %s to size 0: %m", output);
+	fd = open_and_truncate(output, 0);
 
 	wr = write(fd, buf, MOX_U_BOOT_OFFSET);
 	if (wr < 0)
@@ -240,12 +244,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 	memcpy(buf, timh->data, timh->size);
 	memcpy(buf + MOX_WTMI_OFFSET, wtmi->data, wtmi->size);
 
-	fd = open(output, O_RDWR | O_CREAT, 0644);
-	if (fd < 0)
-		die("Cannot open %s for writing: %m", output);
-
-	if (ftruncate(fd, 0) < 0)
-		die("Cannot truncate %s to size 0: %m", output);
+	fd = open_and_truncate(output, 0);
 
 	wr = write(fd, buf, MOX_U_BOOT_OFFSET);
 	if (wr < 0)
