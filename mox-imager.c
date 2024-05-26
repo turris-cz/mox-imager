@@ -45,9 +45,8 @@ struct mox_builder_data {
 	u32 otp_hash[8];
 };
 
-static void generate_key(const char *keypath, const char *seedpath)
+static void seed_from_file(const char *seedpath)
 {
-	EC_KEY *key;
 	int fd;
 	struct stat st;
 	void *seed;
@@ -71,6 +70,24 @@ static void generate_key(const char *keypath, const char *seedpath)
 
 	sharand_seed("Turris Mox", 10, seed, st.st_size);
 	munmap(seed, st.st_size);
+}
+
+static void seed_from_getrandom(void)
+{
+	char seed[128];
+
+	xgetrandom(seed, sizeof(seed));
+	sharand_seed("Turris Mox", 10, seed, sizeof(seed));
+}
+
+static void generate_key(const char *keypath, const char *seedpath)
+{
+	EC_KEY *key;
+
+	if (seedpath)
+		seed_from_file(seedpath);
+	else
+		seed_from_getrandom();
 
 	key = sharand_generate_key();
 	if (keypath)
@@ -604,9 +621,7 @@ int main(int argc, char **argv)
 		die("Serial number, MAC address, board and board version must be given when deploying device");
 
 	if (genkey) {
-		if (!seed)
-			die("Random seed file must be given when generating key");
-		else if (optind < argc)
+		if (optind < argc)
 			die("Images must not be given when generating key");
 
 		generate_key(genkey_output, seed);

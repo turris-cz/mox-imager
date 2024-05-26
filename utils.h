@@ -19,6 +19,7 @@ extern void *xmalloc(size_t sz);
 extern void *xrealloc(void *ptr, size_t sz);
 extern char *xstrdup(const char *s);
 extern char *xstrndup(const char *s, size_t n);
+extern void xgetrandom(void *buf, size_t len);
 
 static inline u32 name2id(const char *name)
 {

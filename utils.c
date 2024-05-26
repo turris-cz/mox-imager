@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>
 #include <time.h>
 
 #include "wtptp.h"
@@ -80,4 +81,18 @@ char *xstrndup(const char *s, size_t n)
 	if (!res)
 		die("Out of memory");
 	return res;
+}
+
+void xgetrandom(void *buf, size_t len)
+{
+	size_t has = 0;
+	ssize_t rd;
+
+	while (has < len) {
+		rd = getrandom(buf + has, len - has, GRND_RANDOM);
+		if (rd < 0)
+			die("Cannot get entropy from getrandom(): %m");
+
+		has += rd;
+	}
 }
