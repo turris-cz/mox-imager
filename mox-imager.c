@@ -163,11 +163,11 @@ static void write_or_die(const char *path, int fd, const void *buf, size_t count
 		die("Cannot write whole output %s", path);
 }
 
-static image_t *obmi_for_creation(void)
+static image_t *obmi_for_creation(int hash_obmi)
 {
 	image_t *obmi;
 
-	if (image_exists(OBMI_ID)) {
+	if (hash_obmi || image_exists(OBMI_ID)) {
 		obmi = image_find(OBMI_ID);
 	} else {
 		obmi = image_new(NULL, 0, OBMI_ID);
@@ -178,7 +178,7 @@ static image_t *obmi_for_creation(void)
 }
 
 static void do_create_trusted_image(const char *keyfile, const char *output,
-				    u32 bootfs, u32 partition)
+				    u32 bootfs, u32 partition, int hash_obmi)
 {
 	EC_KEY *key;
 	image_t *timh, *timn, *wtmi, *obmi;
@@ -197,7 +197,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	}
 
 	wtmi = image_find(name2id("WTMI"));
-	obmi = obmi_for_creation();
+	obmi = obmi_for_creation(hash_obmi);
 
 	buf = xmalloc(MOX_U_BOOT_OFFSET);
 	memset(buf, 0, MOX_U_BOOT_OFFSET);
@@ -221,7 +221,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
 	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
 	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
-		      partition, 0);
+		      partition, hash_obmi);
 	tim_sign(timn, key);
 	tim_parse(timn, NULL, gpp_disassemble, NULL);
 
@@ -238,14 +238,14 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 }
 
 static void do_create_untrusted_image(const char *output, u32 bootfs,
-				      u32 partition)
+				      u32 partition, int hash_obmi)
 {
 	image_t *timh, *wtmi, *obmi;
 	void *buf;
 	int fd;
 
 	wtmi = image_find(name2id("WTMI"));
-	obmi = obmi_for_creation();
+	obmi = obmi_for_creation(hash_obmi);
 
 	buf = xmalloc(MOX_U_BOOT_OFFSET);
 	memset(buf, 0, MOX_U_BOOT_OFFSET);
@@ -254,7 +254,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 	tim_minimal_image(timh, 0, TIMH_ID, 0);
 	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
 	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
-		      partition, 0);
+		      partition, hash_obmi);
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
 	tim_parse(timh, NULL, gpp_disassemble, NULL);
@@ -646,10 +646,10 @@ int main(int argc, char **argv)
 		partition = 0;
 
 	if (create_trusted_image) {
-		do_create_trusted_image(keyfile, output, image_bootfs, partition);
+		do_create_trusted_image(keyfile, output, image_bootfs, partition, hash_a53_firmware);
 		exit(EXIT_SUCCESS);
 	} else if (create_untrusted_image) {
-		do_create_untrusted_image(output, image_bootfs, partition);
+		do_create_untrusted_image(output, image_bootfs, partition, hash_a53_firmware);
 		exit(EXIT_SUCCESS);
 	}
 
