@@ -364,7 +364,7 @@ static void help(void)
 		"  -t, --terminal                              run mini terminal after images are sent\n"
 		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
 		"  -k, --key=KEY                               read ECDSA-521 private key from file KEY\n"
-		"  -r, --random-seed=FILE                      read random seed from file\n"
+		"  -r, --random-seed=FILE                      read random seed from file (for deterministic private key generation)\n"
 		"  -R, --otp-read                              read OTP memory\n"
 		"  -d, --deploy                                deploy device (write OTP memory)\n"
 		"      --serial-number=SN                      serial number to write to OTP memory\n"
