@@ -153,13 +153,22 @@ static void save_flash_image(image_t *tim, const char *path)
 		die("Cannot unmap %s: %m", path);
 }
 
+static void write_or_die(const char *path, int fd, const void *buf, size_t count)
+{
+	ssize_t wr = write(fd, buf, count);
+
+	if (wr < 0)
+		die("Cannot write to %s: %m", path);
+	else if (wr < count)
+		die("Cannot write whole output %s", path);
+}
+
 static void do_create_trusted_image(const char *keyfile, const char *output,
 				    u32 bootfs, u32 partition)
 {
 	EC_KEY *key;
 	image_t *timh, *timn, *wtmi, *obmi;
 	void *buf;
-	ssize_t wr;
 	int fd;
 	u32 timh_loadaddr, timn_loadaddr;
 
@@ -208,11 +217,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 
 	fd = open_and_truncate(output, 0);
 
-	wr = write(fd, buf, MOX_U_BOOT_OFFSET);
-	if (wr < 0)
-		die("Cannot write to %s: %m", output);
-	else if (wr < MOX_U_BOOT_OFFSET)
-		die("Cannot write whole output %s", output);
+	write_or_die(output, fd, buf, MOX_U_BOOT_OFFSET);
 
 	close(fd);
 }
@@ -222,7 +227,6 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 {
 	image_t *timh, *wtmi, *obmi;
 	void *buf;
-	ssize_t wr;
 	int fd;
 
 	wtmi = image_find(name2id("WTMI"));
@@ -246,11 +250,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 
 	fd = open_and_truncate(output, 0);
 
-	wr = write(fd, buf, MOX_U_BOOT_OFFSET);
-	if (wr < 0)
-		die("Cannot write to %s: %m", output);
-	else if (wr < MOX_U_BOOT_OFFSET)
-		die("Cannot write whole output %s", output);
+	write_or_die(output, fd, buf, MOX_U_BOOT_OFFSET);
 
 	close(fd);
 }
