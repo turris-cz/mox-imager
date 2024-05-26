@@ -163,6 +163,20 @@ static void write_or_die(const char *path, int fd, const void *buf, size_t count
 		die("Cannot write whole output %s", path);
 }
 
+static image_t *obmi_for_creation(void)
+{
+	image_t *obmi;
+
+	if (image_exists(OBMI_ID)) {
+		obmi = image_find(OBMI_ID);
+	} else {
+		obmi = image_new(NULL, 0, OBMI_ID);
+		obmi->size = MOX_ENV_OFFSET - MOX_U_BOOT_OFFSET;
+	}
+
+	return obmi;
+}
+
 static void do_create_trusted_image(const char *keyfile, const char *output,
 				    u32 bootfs, u32 partition)
 {
@@ -183,8 +197,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	}
 
 	wtmi = image_find(name2id("WTMI"));
-	obmi = image_new(NULL, 0, name2id("OBMI"));
-	obmi->size = MOX_ENV_OFFSET - MOX_U_BOOT_OFFSET;
+	obmi = obmi_for_creation();
 
 	buf = xmalloc(MOX_U_BOOT_OFFSET);
 	memset(buf, 0, MOX_U_BOOT_OFFSET);
@@ -218,6 +231,8 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	fd = open_and_truncate(output, 0);
 
 	write_or_die(output, fd, buf, MOX_U_BOOT_OFFSET);
+	if (obmi->data)
+		write_or_die(output, fd, obmi->data, obmi->size);
 
 	close(fd);
 }
@@ -230,8 +245,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 	int fd;
 
 	wtmi = image_find(name2id("WTMI"));
-	obmi = image_new(NULL, 0, name2id("OBMI"));
-	obmi->size = MOX_ENV_OFFSET - MOX_U_BOOT_OFFSET;
+	obmi = obmi_for_creation();
 
 	buf = xmalloc(MOX_U_BOOT_OFFSET);
 	memset(buf, 0, MOX_U_BOOT_OFFSET);
@@ -251,6 +265,8 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 	fd = open_and_truncate(output, 0);
 
 	write_or_die(output, fd, buf, MOX_U_BOOT_OFFSET);
+	if (obmi->data)
+		write_or_die(output, fd, obmi->data, obmi->size);
 
 	close(fd);
 }
