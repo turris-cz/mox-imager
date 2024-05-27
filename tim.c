@@ -139,6 +139,35 @@ void tim_image_set_loadaddr(image_t *tim, u32 id, u32 loadaddr)
 	img->loadaddr = htole32(loadaddr);
 }
 
+void tim_image_set_flashaddr(image_t *tim, u32 id, u32 flashaddr, u32 partition)
+{
+	imginfo_t *img;
+
+	img = tim_find_image(tim, id);
+	if (!img)
+		return;
+
+	img->flashentryaddr = htole32(flashaddr);
+	img->partitionnumber = htole32(partition);
+}
+
+void tim_set_id(image_t *tim, u32 new_id)
+{
+	timhdr_t *timhdr = (void *) tim->data;
+	imginfo_t *img;
+
+	if (tim->id == new_id)
+		return;
+
+	img = tim_find_image(tim, tim->id);
+	if (!img)
+		return;
+
+	tim->id = new_id;
+	timhdr->identifier = htole32(new_id);
+	img->id = htole32(new_id);
+}
+
 void tim_remove_image(image_t *tim, u32 id)
 {
 	timhdr_t *timhdr;

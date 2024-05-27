@@ -287,6 +287,7 @@ static inline int tim_is_trusted(const image_t *tim)
 }
 
 extern void tim_image_set_loadaddr(image_t *tim, u32 id, u32 loadaddr);
+extern void tim_image_set_flashaddr(image_t *tim, u32 id, u32 flashaddr, u32 partition);
 extern u32 tim_imap_pkg_addr(image_t *tim, u32 id);
 extern void tim_imap_pkg_addr_set(image_t *tim, u32 id, u32 flashentry,
 				  u32 partition);
@@ -298,6 +299,7 @@ extern void tim_inject_baudrate_change_support(image_t *tim);
 extern void tim_get_otp_hash(image_t *tim, u32 *hash);
 extern void tim_sign(image_t *tim, EC_KEY *key);
 extern void tim_set_boot(image_t *tim, u32 boot);
+extern void tim_set_id(image_t *tim, u32 new_id);
 extern void tim_remove_image(image_t *tim, u32 id);
 extern void tim_add_image(image_t *tim, image_t *image, u32 after, u32 loadaddr,
 			  u32 flashaddr, u32 partition, int hash);

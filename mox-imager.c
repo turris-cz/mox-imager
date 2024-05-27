@@ -188,6 +188,36 @@ static image_t *obmi_for_creation(int hash_obmi)
 	return obmi;
 }
 
+static void loadaddrs_for_bootfs(u32 bootfs,
+				 u32 *timh_loadaddr, u32 *timn_loadaddr)
+{
+	if (bootfs == BOOTFS_SPINOR || bootfs == BOOTFS_EMMC) {
+		*timh_loadaddr = 0x20006000;
+		*timn_loadaddr = 0x20003000;
+	} else if (bootfs == BOOTFS_UART) {
+		*timh_loadaddr = 0x20002000;
+		*timn_loadaddr = 0x20006000;
+	} else {
+		die("Only UART/SPI/EMMC modes are supported");
+	}
+}
+
+static image_t *timh_create_for_trusted(EC_KEY *key, u32 loadaddr,
+					u32 bootfs, u32 partition)
+{
+	image_t *timh;
+
+	timh = image_new(NULL, 0, TIMH_ID);
+	tim_minimal_image(timh, 1, TIMH_ID, 0);
+	tim_set_boot(timh, bootfs);
+	tim_imap_pkg_addr_set(timh, name2id("CSKT"), settings.timn_offset, partition);
+	tim_image_set_loadaddr(timh, TIMH_ID, loadaddr);
+	tim_add_key(timh, name2id("CSK0"), key);
+	tim_sign(timh, key);
+
+	return timh;
+}
+
 static void write_image(const char *output,
 			image_t *timh, image_t *timn,
 			image_t *wtmi, image_t *obmi)
@@ -214,6 +244,50 @@ static void write_image(const char *output,
 	close(fd);
 }
 
+static void do_sign_untrusted_image(const char *keyfile, const char *output,
+				    u32 bootfs, u32 partition, int hash_obmi)
+{
+	image_t *timh, *timn, *wtmi, *obmi = NULL;
+	u32 timh_loadaddr, timn_loadaddr;
+	EC_KEY *key;
+
+	loadaddrs_for_bootfs(bootfs, &timh_loadaddr, &timn_loadaddr);
+
+	key = load_key(keyfile);
+
+	if (image_exists(TIMN_ID))
+		die("TIMN image is present withing given firmware, cannot sign");
+
+	timh = image_find(TIMH_ID);
+	if (tim_is_trusted(timh))
+		die("Given image is already trusted, cannot sign");
+
+	wtmi = image_find(WTMI_ID);
+	if (image_exists(OBMI_ID))
+		obmi = image_find(OBMI_ID);
+
+	tim_set_id(timh, TIMN_ID);
+	timn = timh;
+
+	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
+	tim_parse(timh, NULL, gpp_disassemble, NULL);
+
+	tim_set_boot(timn, bootfs);
+	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
+	tim_image_set_flashaddr(timn, TIMN_ID, settings.timn_offset, partition);
+	tim_enable_hash(timn, TIMN_ID, 1);
+	tim_image_set_flashaddr(timn, WTMI_ID, settings.wtmi_offset, partition);
+	tim_enable_hash(timn, WTMI_ID, 1);
+	if (obmi) {
+		tim_image_set_flashaddr(timn, OBMI_ID, settings.obmi_offset, partition);
+		tim_enable_hash(timn, OBMI_ID, hash_obmi);
+	}
+	tim_sign(timn, key);
+	tim_parse(timn, NULL, gpp_disassemble, NULL);
+
+	write_image(output, timh, timn, wtmi, obmi);
+}
+
 static void do_create_trusted_image(const char *keyfile, const char *output,
 				    u32 bootfs, u32 partition, int hash_obmi)
 {
@@ -221,28 +295,14 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	image_t *timh, *timn, *wtmi, *obmi;
 	u32 timh_loadaddr, timn_loadaddr;
 
-	if (bootfs == BOOTFS_SPINOR || bootfs == BOOTFS_EMMC) {
-		timh_loadaddr = 0x20006000;
-		timn_loadaddr = 0x20003000;
-	} else if (bootfs == BOOTFS_UART) {
-		timh_loadaddr = 0x20002000;
-		timn_loadaddr = 0x20006000;
-	} else {
-		die("Only UART/SPI/EMMC modes are supported");
-	}
+	loadaddrs_for_bootfs(bootfs, &timh_loadaddr, &timn_loadaddr);
 
 	wtmi = image_find(name2id("WTMI"));
 	obmi = obmi_for_creation(hash_obmi);
 
 	key = load_key(keyfile);
 
-	timh = image_new(NULL, 0, TIMH_ID);
-	tim_minimal_image(timh, 1, TIMH_ID, 0);
-	tim_set_boot(timh, bootfs);
-	tim_imap_pkg_addr_set(timh, name2id("CSKT"), settings.timn_offset, partition);
-	tim_image_set_loadaddr(timh, TIMH_ID, timh_loadaddr);
-	tim_add_key(timh, name2id("CSK0"), key);
-	tim_sign(timh, key);
+	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
 	tim_parse(timh, NULL, gpp_disassemble, NULL);
 
 	timn = image_new(NULL, 0, TIMN_ID);
@@ -458,6 +518,7 @@ static void help(void)
 		"  -s, --sign                                  sign TIM image with ECDSA-521 private key\n"
 		"      --create-trusted-image=SPI/UART/EMMC    create secure image for SPI / UART (private key required)\n"
 		"      --create-untrusted-image=SPI/UART/EMMC  create untrusted secure image (no private key required)\n"
+		"      --sign-untrusted-image=SPI/UART/EMMC    sign untrusted image to make it trusted (private key required)\n"
 		"  -S  --disassemble                           disassemble GPP code when parsing TIM\n"
 		"      --get-otp-hash                          print OTP hash of given secure firmware image\n"
 		"  -u, --hash-a53-firmware                     save A53 firmware (TF-A + U-Boot) image hash to TIM\n"
@@ -496,6 +557,7 @@ static const struct option long_options[] = {
 	{ "sign",			no_argument,		0,	's' },
 	{ "create-trusted-image",	required_argument,	0,	'c' },
 	{ "create-untrusted-image",	required_argument,	0,	'C' },
+	{ "sign-untrusted-image",	required_argument,	0,	'i' },
 	{ "disassemble",		no_argument,		0,	'S' },
 	{ "get-otp-hash",		no_argument,		0,	'G' },
 	{ "hash-a53-firmware",		no_argument,		0,	'u' },
@@ -515,7 +577,8 @@ int main(int argc, char **argv)
 		   *otp_hash;
 	int sign, hash_a53_firmware, no_a53_firmware, otp_read, deploy,
 	    deploy_no_board_info, get_otp_hash, create_trusted_image,
-	    create_untrusted_image, send_escape, baudrate, genkey, dummy;
+	    create_untrusted_image, sign_untrusted_image, send_escape, baudrate,
+	    genkey, dummy;
 	u32 image_bootfs = 0, partition;
 	image_t *timh = NULL, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
@@ -524,7 +587,8 @@ int main(int argc, char **argv)
               mac_address = board = board_version = otp_hash = NULL;
 	sign = hash_a53_firmware = no_a53_firmware = otp_read = deploy =
 	       deploy_no_board_info = get_otp_hash = create_trusted_image =
-	       create_untrusted_image = send_escape = baudrate = genkey = 0;
+	       create_untrusted_image = sign_untrusted_image = send_escape =
+	       baudrate = genkey = 0;
 
 	while (1) {
 		int c;
@@ -648,6 +712,7 @@ int main(int argc, char **argv)
 			break;
 		case 'c':
 		case 'C':
+		case 'i':
 			if (!strcmp(optarg, "UART"))
 				image_bootfs = BOOTFS_UART;
 			else if (!strcmp(optarg, "SPI"))
@@ -655,11 +720,13 @@ int main(int argc, char **argv)
 			else if (!strcmp(optarg, "EMMC"))
 				image_bootfs = BOOTFS_EMMC;
 			else
-				die("Invalid argument for parameter --create-[un]trusted-image");
+				die("Invalid argument for parameter --create-[un]trusted-image/--sign-untrusted-image");
 			if (c == 'c')
 				create_trusted_image = 1;
-			else
+			else if (c == 'C')
 				create_untrusted_image = 1;
+			else
+				sign_untrusted_image = 1;
 			break;
 		case 'S':
 			gpp_disassemble = 1;
@@ -700,6 +767,9 @@ int main(int argc, char **argv)
 
 	if (create_untrusted_image && !output)
 		die("Option --output must be given when creating untrusted image");
+
+	if (sign_untrusted_image && (!keyfile || !output))
+		die("Options --key and --output must be given when signing untrusted image");
 
 	if ((tty || fdstr) && output)
 		die("Options --device and --output cannot be used together");
@@ -749,6 +819,9 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	} else if (create_untrusted_image) {
 		do_create_untrusted_image(output, image_bootfs, partition, hash_a53_firmware);
+		exit(EXIT_SUCCESS);
+	} else if (sign_untrusted_image) {
+		do_sign_untrusted_image(keyfile, output, image_bootfs, partition, hash_a53_firmware);
 		exit(EXIT_SUCCESS);
 	}
 
