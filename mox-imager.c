@@ -335,9 +335,10 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 		      const char *mac_address, const char *board,
 		      const char *board_version, const char *otp_hash)
 {
+	char *end, buf[9];
 	u64 mac, sn;
 	u32 bv, bt;
-	char *end;
+	int i;
 
 	sn = strtoull(serial_number, &end, 16);
 	if (*end)
@@ -366,25 +367,15 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 	mbd->mac_addr_high = htole32(mac >> 32);
 	mbd->board_version = htole32((bt << 6) | bv);
 
-	if (otp_hash) {
-		/* if OTP hash is given as arg, parse it */
+	if (strlen(otp_hash) != 64)
+		die("Invalid OTP hash (wrong length)");
 
-		int i;
-		char buf[9], *end;
-
-		if (strlen(otp_hash) != 64)
-			die("Invalid OTP hash (wrong length)");
-
-		buf[8] = '\0';
-		for (i = 0; i < 8; ++i) {
-			memcpy(buf, &otp_hash[8 * i], 8);
-			mbd->otp_hash[i] = strtoull(buf, &end, 16);
-			if (*end)
-				die("Invalid OTP hash (bad character)");
-		}
-	} else {
-		/* else generate from given secure firmware */
-		do_get_otp_hash(mbd->otp_hash);
+	buf[8] = '\0';
+	for (i = 0; i < 8; ++i) {
+		memcpy(buf, &otp_hash[8 * i], 8);
+		mbd->otp_hash[i] = strtoull(buf, &end, 16);
+		if (*end)
+			die("Invalid OTP hash (bad character)");
 	}
 }
 
@@ -632,8 +623,8 @@ int main(int argc, char **argv)
 	if (otp_read && deploy)
 		die("Options to read OTP and deploy cannot be used together");
 
-	if (deploy && (!serial_number || !mac_address || !board || !board_version))
-		die("Serial number, MAC address, board and board version must be given when deploying device");
+	if (deploy && (!serial_number || !mac_address || !board || !board_version || !otp_hash))
+		die("Serial number, MAC address, board, board version and OTP hash must be given when deploying device");
 
 	if (genkey) {
 		if (optind < argc)
