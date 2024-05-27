@@ -187,7 +187,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	timn = image_new(NULL, 0, TIMN_ID);
 	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
 	tim_set_boot(timn, bootfs);
-	tim_image_set_loadaddr(timh, TIMN_ID, timn_loadaddr);
+	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
 	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, MOX_WTMI_OFFSET, partition, 1);
 	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, MOX_U_BOOT_OFFSET,
 		      partition, 0);
