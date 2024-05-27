@@ -663,8 +663,8 @@ int main(int argc, char **argv)
 		if (otp_read && images_given)
 			die("Images given when trying to read/write OTP");
 
-		if (image_exists(TIMH_ID) || image_exists(TIMN_ID) || image_exists(WTMI_ID) || image_exists(OBMI_ID))
-			die("TIMH/TIMN/WTMI/OBMI image should not be given when deploying");
+		if (image_exists(TIMH_ID) || image_exists(TIMN_ID) || image_exists(WTMI_ID))
+			die("TIMH/TIMN/WTMI image should not be given when deploying");
 
 		mbd = find_mbd();
 
@@ -677,10 +677,19 @@ int main(int argc, char **argv)
 		tim_minimal_image(timh, 0, TIMH_ID, 1);
 		wtmi = image_new((void *) wtmi_data, wtmi_data_size, WTMI_ID);
 		tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, 0, 0, 1);
-		tim_rehash(timh);
 		nimages = 2;
 		trusted = 0;
 		images_given = 1;
+
+		if (image_exists(OBMI_ID)) {
+			tim_add_image(timh, image_find(OBMI_ID), WTMI_ID, 0x64100000, MOX_U_BOOT_OFFSET, 0, 0);
+			++nimages;
+
+			/* tell WTMI deploy() to not reset the SoC after deployment */
+			mbd->op = htole32(le32toh(mbd->op) | (1 << 31));
+		}
+
+		tim_rehash(timh);
 	} else if (images_given) {
 		int has_fast_mode;
 
