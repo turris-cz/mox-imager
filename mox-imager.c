@@ -350,6 +350,11 @@ static void parse_otp_hash(struct mox_builder_data *mbd, const char *otp_hash)
 	char *end, buf[9];
 	int i;
 
+	if (!strcmp(otp_hash, "0")) {
+		memset(mbd->otp_hash, 0, sizeof(mbd->otp_hash));
+		return;
+	}
+
 	if (strlen(otp_hash) != 64)
 		die("Invalid OTP hash (wrong length)");
 
