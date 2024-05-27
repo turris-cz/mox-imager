@@ -188,14 +188,38 @@ static image_t *obmi_for_creation(int hash_obmi)
 	return obmi;
 }
 
+static void write_image(const char *output,
+			image_t *timh, image_t *timn,
+			image_t *wtmi, image_t *obmi)
+{
+	void *buf;
+	u32 size;
+	int fd;
+
+	size = settings.obmi_offset;
+	buf = xmalloc(size);
+	memset(buf, 0, size);
+
+	memcpy(buf, timh->data, timh->size);
+	if (timn)
+		memcpy(buf + settings.timn_offset, timn->data, timn->size);
+	memcpy(buf + settings.wtmi_offset, wtmi->data, wtmi->size);
+
+	fd = open_and_truncate(output, 0);
+
+	write_or_die(output, fd, buf, size);
+	if (obmi && obmi->data)
+		write_or_die(output, fd, obmi->data, obmi->size);
+
+	close(fd);
+}
+
 static void do_create_trusted_image(const char *keyfile, const char *output,
 				    u32 bootfs, u32 partition, int hash_obmi)
 {
 	EC_KEY *key;
 	image_t *timh, *timn, *wtmi, *obmi;
-	void *buf;
-	int fd;
-	u32 timh_loadaddr, timn_loadaddr, size;
+	u32 timh_loadaddr, timn_loadaddr;
 
 	if (bootfs == BOOTFS_SPINOR || bootfs == BOOTFS_EMMC) {
 		timh_loadaddr = 0x20006000;
@@ -210,10 +234,6 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	wtmi = image_find(name2id("WTMI"));
 	obmi = obmi_for_creation(hash_obmi);
 
-	size = settings.obmi_offset;
-	buf = xmalloc(size);
-	memset(buf, 0, size);
-
 	key = load_key(keyfile);
 
 	timh = image_new(NULL, 0, TIMH_ID);
@@ -225,8 +245,6 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	tim_sign(timh, key);
 	tim_parse(timh, NULL, gpp_disassemble, NULL);
 
-	memcpy(buf, timh->data, timh->size);
-
 	timn = image_new(NULL, 0, TIMN_ID);
 	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
 	tim_set_boot(timn, bootfs);
@@ -237,32 +255,16 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	tim_sign(timn, key);
 	tim_parse(timn, NULL, gpp_disassemble, NULL);
 
-	memcpy(buf + settings.timn_offset, timn->data, timn->size);
-	memcpy(buf + settings.wtmi_offset, wtmi->data, wtmi->size);
-
-	fd = open_and_truncate(output, 0);
-
-	write_or_die(output, fd, buf, size);
-	if (obmi->data)
-		write_or_die(output, fd, obmi->data, obmi->size);
-
-	close(fd);
+	write_image(output, timh, timn, wtmi, obmi);
 }
 
 static void do_create_untrusted_image(const char *output, u32 bootfs,
 				      u32 partition, int hash_obmi)
 {
 	image_t *timh, *wtmi, *obmi;
-	void *buf;
-	int fd;
-	u32 size;
 
 	wtmi = image_find(name2id("WTMI"));
 	obmi = obmi_for_creation(hash_obmi);
-
-	size = settings.obmi_offset;
-	buf = xmalloc(size);
-	memset(buf, 0, size);
 
 	timh = image_new(NULL, 0, TIMH_ID);
 	tim_minimal_image(timh, 0, TIMH_ID, 0);
@@ -273,16 +275,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 	tim_rehash(timh);
 	tim_parse(timh, NULL, gpp_disassemble, NULL);
 
-	memcpy(buf, timh->data, timh->size);
-	memcpy(buf + settings.wtmi_offset, wtmi->data, wtmi->size);
-
-	fd = open_and_truncate(output, 0);
-
-	write_or_die(output, fd, buf, size);
-	if (obmi->data)
-		write_or_die(output, fd, obmi->data, obmi->size);
-
-	close(fd);
+	write_image(output, timh, NULL, wtmi, obmi);
 }
 
 static int xdigit2i(char c)
