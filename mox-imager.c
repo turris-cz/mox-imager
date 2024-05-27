@@ -663,14 +663,15 @@ int main(int argc, char **argv)
 		if (otp_read && images_given)
 			die("Images given when trying to read/write OTP");
 
+		if (image_exists(TIMH_ID) || image_exists(TIMN_ID) || image_exists(WTMI_ID) || image_exists(OBMI_ID))
+			die("TIMH/TIMN/WTMI/OBMI image should not be given when deploying");
+
 		mbd = find_mbd();
 
 		if (deploy)
 			do_deploy(mbd, serial_number, mac_address, board, board_version, otp_hash);
 		else
 			mbd->op = 0;
-
-		image_delete_all();
 
 		timh = image_new(NULL, 0, TIMH_ID);
 		tim_minimal_image(timh, 0, TIMH_ID, 1);
