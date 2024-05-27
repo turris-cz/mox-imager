@@ -345,14 +345,30 @@ static void do_get_otp_hash(u32 *hash)
 	tim_get_otp_hash(tim, hash);
 }
 
+static void parse_otp_hash(struct mox_builder_data *mbd, const char *otp_hash)
+{
+	char *end, buf[9];
+	int i;
+
+	if (strlen(otp_hash) != 64)
+		die("Invalid OTP hash (wrong length)");
+
+	buf[8] = '\0';
+	for (i = 0; i < 8; ++i) {
+		memcpy(buf, &otp_hash[8 * i], 8);
+		mbd->otp_hash[i] = strtoull(buf, &end, 16);
+		if (*end)
+			die("Invalid OTP hash (bad character)");
+	}
+}
+
 static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 		      const char *mac_address, const char *board,
 		      const char *board_version, const char *otp_hash)
 {
-	char *end, buf[9];
 	u64 mac, sn;
 	u32 bv, bt;
-	int i;
+	char *end;
 
 	sn = strtoull(serial_number, &end, 16);
 	if (*end)
@@ -381,16 +397,20 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 	mbd->mac_addr_high = htole32(mac >> 32);
 	mbd->board_version = htole32((bt << 6) | bv);
 
-	if (strlen(otp_hash) != 64)
-		die("Invalid OTP hash (wrong length)");
+	parse_otp_hash(mbd, otp_hash);
+}
 
-	buf[8] = '\0';
-	for (i = 0; i < 8; ++i) {
-		memcpy(buf, &otp_hash[8 * i], 8);
-		mbd->otp_hash[i] = strtoull(buf, &end, 16);
-		if (*end)
-			die("Invalid OTP hash (bad character)");
-	}
+static void do_deploy_no_board_info(struct mox_builder_data *mbd,
+				    const char *otp_hash)
+{
+	mbd->op = htole32(2);
+	mbd->serial_number_low = 0;
+	mbd->serial_number_high = 0;
+	mbd->mac_addr_low = 0;
+	mbd->mac_addr_high = 0;
+	mbd->board_version = 0;
+
+	parse_otp_hash(mbd, otp_hash);
 }
 
 static u32 parse_u32_opt(const char *opt, const char *arg, u32 min, u32 max)
@@ -424,14 +444,18 @@ static void help(void)
 		"  -t, --terminal                              run mini terminal after images are sent\n"
 		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
 		"  -k, --key=KEY                               read ECDSA-521 private key from file KEY\n"
-		"  -r, --random-seed=FILE                      read random seed from file (for deterministic private key generation)\n"
-		"  -R, --otp-read                              read OTP memory\n"
-		"  -d, --deploy                                deploy device (write OTP memory)\n"
+		"  -r, --random-seed=FILE                      read random seed from file (for deterministic private key generation)\n\n"
+		"  -R, --otp-read                              read OTP memory\n\n"
+		"  -d, --deploy[=no-board-info]                deploy device (write OTP memory).\n"
+		"                                              Serial number, MAC address, board type and board version\n"
+		"                                              must not be given if the 'no-board-info' parameter is given.\n"
+		"                                              In that case only OTP hash is written and the device is\n"
+		"                                              provisioned for trusted boot.\n"
 		"      --serial-number=SN                      serial number to write to OTP memory\n"
 		"      --mac-address=MAC                       MAC address to write to OTP memory\n"
 		"      --board=MOX/RIPE                        board type to write to OTP memory\n"
 		"      --board-version=BV                      board version to write to OTP memory\n"
-		"      --otp-hash=HASH                         secure firmware hash as given by --get-otp-hash\n"
+		"      --otp-hash=HASH                         secure firmware hash as given by --get-otp-hash\n\n"
 		"  -g, --gen-key[=KEY]                         generate ECDSA-521 private key to file KEY or to stdout\n"
 		"  -s, --sign                                  sign TIM image with ECDSA-521 private key\n"
 		"      --create-trusted-image=SPI/UART/EMMC    create secure image for SPI / UART (private key required)\n"
@@ -464,7 +488,7 @@ static const struct option long_options[] = {
 	{ "key",			required_argument,	0,	'k' },
 	{ "random-seed",		required_argument,	0,	'r' },
 	{ "otp-read",			no_argument,		0,	'R' },
-	{ "deploy",			no_argument,		0,	'd' },
+	{ "deploy",			optional_argument,	0,	'd' },
 	{ "serial-number",		required_argument,	0,	'N' },
 	{ "mac-address",		required_argument,	0,	'M' },
 	{ "board",			required_argument,	0,	'Z' },
@@ -492,8 +516,8 @@ int main(int argc, char **argv)
 		   *serial_number, *mac_address, *board, *board_version,
 		   *otp_hash;
 	int sign, hash_a53_firmware, no_a53_firmware, otp_read, deploy,
-	    get_otp_hash, create_trusted_image, create_untrusted_image,
-	    send_escape, baudrate, genkey, dummy;
+	    deploy_no_board_info, get_otp_hash, create_trusted_image,
+	    create_untrusted_image, send_escape, baudrate, genkey, dummy;
 	u32 image_bootfs = 0, partition;
 	image_t *timh = NULL, *timn = NULL;
 	int nimages, nimages_timn, images_given, trusted;
@@ -501,8 +525,8 @@ int main(int argc, char **argv)
 	tty = fdstr = output = keyfile = seed = genkey_output = serial_number =
               mac_address = board = board_version = otp_hash = NULL;
 	sign = hash_a53_firmware = no_a53_firmware = otp_read = deploy =
-	       get_otp_hash = create_trusted_image = create_untrusted_image =
-	       send_escape = baudrate = genkey = 0;
+	       deploy_no_board_info = get_otp_hash = create_trusted_image =
+	       create_untrusted_image = send_escape = baudrate = genkey = 0;
 
 	while (1) {
 		int c;
@@ -550,6 +574,15 @@ int main(int argc, char **argv)
 			otp_read = 1;
 			break;
 		case 'd':
+			if (deploy)
+				die("Option --deploy already given");
+
+			if (optarg) {
+				deploy_no_board_info = !strcmp(optarg, "no-board-info");
+				if (!deploy_no_board_info)
+					die("value %s of option '--deploy' unrecognized", optarg);
+			}
+
 			deploy = 1;
 			break;
 		case 't':
@@ -682,8 +715,17 @@ int main(int argc, char **argv)
 	if (otp_read && deploy)
 		die("Options to read OTP and deploy cannot be used together");
 
-	if (deploy && (!serial_number || !mac_address || !board || !board_version || !otp_hash))
-		die("Serial number, MAC address, board, board version and OTP hash must be given when deploying device");
+	if (deploy) {
+		if (deploy_no_board_info) {
+			if (!otp_hash)
+				die("Option --otp-hash must be given when deploying device with no board information");
+			if (serial_number || mac_address || board || board_version)
+				die("Options --serial-number, --mac-address, --board and --board-version must not be given when deploying device with no board information");
+		} else {
+			if (!serial_number || !mac_address || !board || !board_version || !otp_hash)
+				die("Options --serial-number, --mac-address, --board, --board-version and --otp-hash must be given when deploying device");
+		}
+	}
 
 	if (genkey) {
 		if (optind < argc)
@@ -727,10 +769,14 @@ int main(int argc, char **argv)
 
 		mbd = find_mbd();
 
-		if (deploy)
-			do_deploy(mbd, serial_number, mac_address, board, board_version, otp_hash);
-		else
+		if (deploy) {
+			if (deploy_no_board_info)
+				do_deploy_no_board_info(mbd, otp_hash);
+			else
+				do_deploy(mbd, serial_number, mac_address, board, board_version, otp_hash);
+		} else {
 			mbd->op = 0;
+		}
 
 		timh = image_new(NULL, 0, TIMH_ID);
 		tim_minimal_image(timh, 0, TIMH_ID, 1);
@@ -853,7 +899,7 @@ int main(int argc, char **argv)
 		if (otp_read)
 			uart_otp_read();
 		else if (deploy)
-			uart_deploy();
+			uart_deploy(deploy_no_board_info);
 
 		if (terminal_on_exit)
 			uart_terminal();

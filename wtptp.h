@@ -28,7 +28,7 @@ extern void try_change_baudrate(unsigned int baudrate);
 extern u32 selectimage(void);
 extern void sendimage(image_t *img, int fast);
 extern void uart_otp_read(void);
-extern void uart_deploy(void);
+extern void uart_deploy(int no_board_info);
 extern void uart_terminal(void);
 
 extern const char *uart_terminal_kbs;

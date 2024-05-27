@@ -944,12 +944,21 @@ void uart_otp_read(void)
 	printf("All done.\n");
 }
 
-void uart_deploy(void)
+void uart_deploy(int no_board_info)
 {
 	u8 buf[134];
 	int ram;
 
 	eccread(buf, 4);
+
+	if (no_board_info) {
+		if (memcmp(buf, "DONE", 4))
+			goto wrong;
+
+		printf("\nDeployment successful.\n");
+		return;
+	}
+
 	if (memcmp(buf, "RAM", 3) || buf[3] < '0' || buf[3] > '3')
 		goto wrong;
 
