@@ -926,6 +926,7 @@ void uart_otp_read(void)
 		die("Wrong reply: \"%.*s\"", 4, buf);
 
 	for (i = 0; i < 44; ++i) {
+		u8 state;
 		u64 val;
 		char *end;
 
@@ -933,12 +934,14 @@ void uart_otp_read(void)
 
 		val = strtoull((char *)buf + 2, &end, 16);
 
-		if ((buf[0] != '0' && buf[0] != '1') || buf[1] != ' '
+		if ((buf[0] < '0' || buf[0] > '3') || buf[1] != ' '
 		    || buf[18] != '\n' || (u8 *) end != &buf[18])
 			die("Wrong reply when reading OTP row %i", i);
 
-		printf("OTP row %i %016llx %s\n", i, val,
-		       buf[0] == '1' ? "locked" : "not locked");
+		state = buf[0] - '0';
+		printf("OTP row %i %016llx %s%s\n", i, val,
+		       (state & 1) ? "locked" : "not locked",
+		       (state & 2) ? ", read failed (row masked?)" : "");
 	}
 
 	printf("All done.\n");
