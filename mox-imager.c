@@ -643,6 +643,8 @@ int main(int argc, char **argv)
 			baudrate = atoi(optarg);
 			if (baudrate > 6000000)
 				die("Desired baudrate too high (maximum is 6 MBaud)");
+			if (baudrate == 115200)
+				baudrate = 0;
 			break;
 		case 'F':
 			if (fdstr)
