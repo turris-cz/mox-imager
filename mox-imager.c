@@ -264,6 +264,15 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 	if (tim_is_trusted(timh))
 		die("Given image is already trusted, cannot sign");
 
+	if (bootfs == BOOTFS_UART) {
+		int has_fast_mode;
+
+		tim_parse(timh, NULL, 0, &has_fast_mode);
+
+		if (!has_fast_mode)
+			tim_inject_baudrate_change_support(timh);
+	}
+
 	wtmi = image_find(WTMI_ID);
 	if (image_exists(OBMI_ID))
 		obmi = image_find(OBMI_ID);
