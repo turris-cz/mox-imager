@@ -483,6 +483,19 @@ static void do_deploy_no_board_info(struct mox_builder_data *mbd,
 	parse_otp_hash(mbd, otp_hash);
 }
 
+static void load_otp_read_image(const char *otp_read)
+{
+	if (!strcmp(otp_read, "testing")) {
+#include "read-otp-testing.c"
+		image_load_bundled(read_otp_data, read_otp_data_size);
+	} else if (!strcmp(otp_read, "RAD")) {
+#include "read-otp-rad.c"
+		image_load_bundled(read_otp_data, read_otp_data_size);
+	} else {
+		die("Invalid value for option --otp-read. Supported values: \"testing\", \"RAD\"");
+	}
+}
+
 static u32 parse_u32_opt(const char *opt, const char *arg, u32 min, u32 max)
 {
 	unsigned long val;
@@ -515,7 +528,8 @@ static void help(void)
 		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
 		"  -k, --key=KEY                               read ECDSA-521 private key from file KEY\n"
 		"  -r, --random-seed=FILE                      read random seed from file (for deterministic private key generation)\n\n"
-		"  -R, --otp-read                              read OTP memory\n\n"
+		"  -R, --otp-read[=VENDOR]                     read OTP memory (use the optional option VENDOR to read OTP on trusted\n"
+		"                                              boards signed with VENDOR's key)\n\n"
 		"  -d, --deploy[=no-board-info]                deploy device (write OTP memory).\n"
 		"                                              Serial number, MAC address, board type and board version\n"
 		"                                              must not be given if the 'no-board-info' parameter is given.\n"
@@ -558,7 +572,7 @@ static const struct option long_options[] = {
 	{ "output",			required_argument,	0,	'o' },
 	{ "key",			required_argument,	0,	'k' },
 	{ "random-seed",		required_argument,	0,	'r' },
-	{ "otp-read",			no_argument,		0,	'R' },
+	{ "otp-read",			optional_argument,	0,	'R' },
 	{ "deploy",			optional_argument,	0,	'd' },
 	{ "serial-number",		required_argument,	0,	'N' },
 	{ "mac-address",		required_argument,	0,	'M' },
@@ -586,8 +600,8 @@ int main(int argc, char **argv)
 {
 	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey_output,
 		   *serial_number, *mac_address, *board, *board_version,
-		   *otp_hash;
-	int sign, hash_a53_firmware, no_a53_firmware, otp_read, deploy,
+		   *otp_hash, *otp_read;
+	int sign, hash_a53_firmware, no_a53_firmware, deploy,
 	    deploy_no_board_info, get_otp_hash, create_trusted_image,
 	    create_untrusted_image, sign_untrusted_image, send_escape, baudrate,
 	    genkey, dummy;
@@ -596,8 +610,8 @@ int main(int argc, char **argv)
 	int nimages, nimages_timn = 0, images_given, trusted;
 
 	tty = fdstr = output = keyfile = seed = genkey_output = serial_number =
-              mac_address = board = board_version = otp_hash = NULL;
-	sign = hash_a53_firmware = no_a53_firmware = otp_read = deploy =
+              mac_address = board = board_version = otp_hash = otp_read = NULL;
+	sign = hash_a53_firmware = no_a53_firmware = deploy =
 	       deploy_no_board_info = get_otp_hash = create_trusted_image =
 	       create_untrusted_image = sign_untrusted_image = send_escape =
 	       baudrate = genkey = 0;
@@ -605,7 +619,7 @@ int main(int argc, char **argv)
 	while (1) {
 		int c;
 
-		c = getopt_long(argc, argv, "D:b:F:Eo:k:r:Rdg:sStunh",
+		c = getopt_long(argc, argv, "D:b:F:Eo:k:r:R::dg:sStunh",
 				long_options, NULL);
 		if (c == -1)
 			break;
@@ -645,7 +659,12 @@ int main(int argc, char **argv)
 			seed = optarg;
 			break;
 		case 'R':
-			otp_read = 1;
+			if (otp_read)
+				die("Option --otp-read already given");
+			if (optarg)
+				otp_read = optarg;
+			else
+				otp_read = "";
 			break;
 		case 'd':
 			if (deploy)
@@ -840,7 +859,14 @@ int main(int argc, char **argv)
 	if (!otp_read && !deploy && !images_given && !terminal_on_exit)
 		die("No images given, try -h for help");
 
-	if (otp_read || deploy) {
+	if (otp_read && strcmp(otp_read, "")) {
+		load_otp_read_image(otp_read);
+		timh = image_find(TIMH_ID);
+		timn = image_find(TIMN_ID);
+		nimages = 3;
+		trusted = 1;
+		images_given = 1;
+	} else if (otp_read || deploy) {
 		struct mox_builder_data *mbd;
 
 		if (otp_read && images_given)
