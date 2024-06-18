@@ -174,15 +174,17 @@ static void write_or_die(const char *path, int fd, const void *buf, size_t count
 		die("Cannot write whole output %s", path);
 }
 
-static image_t *obmi_for_creation(int hash_obmi)
+static image_t *obmi_for_creation(int needs_obmi, int hash_obmi)
 {
 	image_t *obmi;
 
 	if (hash_obmi || image_exists(OBMI_ID)) {
 		obmi = image_find(OBMI_ID);
-	} else {
+	} else if (needs_obmi) {
 		obmi = image_new(NULL, 0, OBMI_ID);
 		obmi->size = settings.obmi_max_size;
+	} else {
+		obmi = NULL;
 	}
 
 	return obmi;
@@ -285,11 +287,13 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 	tim_sign(timn, key);
 	tim_parse(timn, NULL, gpp_disassemble, NULL);
 
-	write_image(output, timh, timn, wtmi, obmi);
+	if (output)
+		write_image(output, timh, timn, wtmi, obmi);
 }
 
 static void do_create_trusted_image(const char *keyfile, const char *output,
-				    u32 bootfs, u32 partition, int hash_obmi)
+				    u32 bootfs, u32 partition, int needs_obmi,
+				    int hash_obmi, int *nimages, int *nimages_timn)
 {
 	EC_KEY *key;
 	image_t *timh, *timn, *wtmi, *obmi;
@@ -298,44 +302,52 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	loadaddrs_for_bootfs(bootfs, &timh_loadaddr, &timn_loadaddr);
 
 	wtmi = image_find(name2id("WTMI"));
-	obmi = obmi_for_creation(hash_obmi);
+	obmi = obmi_for_creation(needs_obmi, hash_obmi);
 
 	key = load_key(keyfile);
 
 	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
-	tim_parse(timh, NULL, gpp_disassemble, NULL);
+	tim_parse(timh, nimages, gpp_disassemble, NULL);
 
 	timn = image_new(NULL, 0, TIMN_ID);
 	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
 	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, settings.wtmi_offset, partition, 1);
-	tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, settings.obmi_offset,
-		      partition, hash_obmi);
-	tim_sign(timn, key);
-	tim_parse(timn, NULL, gpp_disassemble, NULL);
 
-	write_image(output, timh, timn, wtmi, obmi);
+	if (obmi)
+		tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, settings.obmi_offset,
+			      partition, hash_obmi);
+
+	tim_sign(timn, key);
+	tim_parse(timn, nimages_timn, gpp_disassemble, NULL);
+
+	if (output)
+		write_image(output, timh, timn, wtmi, obmi);
 }
 
 static void do_create_untrusted_image(const char *output, u32 bootfs,
-				      u32 partition, int hash_obmi)
+				      u32 partition, int needs_obmi, int hash_obmi, int *nimages)
 {
 	image_t *timh, *wtmi, *obmi;
 
 	wtmi = image_find(name2id("WTMI"));
-	obmi = obmi_for_creation(hash_obmi);
+	obmi = obmi_for_creation(needs_obmi, hash_obmi);
 
 	timh = image_new(NULL, 0, TIMH_ID);
-	tim_minimal_image(timh, 0, TIMH_ID, 0);
+	tim_minimal_image(timh, 0, TIMH_ID, bootfs == BOOTFS_UART);
 	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, settings.wtmi_offset, partition, 1);
-	tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, settings.obmi_offset,
-		      partition, hash_obmi);
+
+	if (obmi)
+		tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, settings.obmi_offset,
+			      partition, hash_obmi);
+
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
-	tim_parse(timh, NULL, gpp_disassemble, NULL);
+	tim_parse(timh, nimages, gpp_disassemble, NULL);
 
-	write_image(output, timh, NULL, wtmi, obmi);
+	if (output)
+		write_image(output, timh, NULL, wtmi, obmi);
 }
 
 static int xdigit2i(char c)
@@ -581,7 +593,7 @@ int main(int argc, char **argv)
 	    genkey, dummy;
 	u32 image_bootfs = 0, partition;
 	image_t *timh = NULL, *timn = NULL;
-	int nimages, nimages_timn, images_given, trusted;
+	int nimages, nimages_timn = 0, images_given, trusted;
 
 	tty = fdstr = output = keyfile = seed = genkey_output = serial_number =
               mac_address = board = board_version = otp_hash = NULL;
@@ -815,10 +827,10 @@ int main(int argc, char **argv)
 		partition = 0;
 
 	if (create_trusted_image) {
-		do_create_trusted_image(keyfile, output, image_bootfs, partition, hash_a53_firmware);
+		do_create_trusted_image(keyfile, output, image_bootfs, partition, 1, hash_a53_firmware, NULL, NULL);
 		exit(EXIT_SUCCESS);
 	} else if (create_untrusted_image) {
-		do_create_untrusted_image(output, image_bootfs, partition, hash_a53_firmware);
+		do_create_untrusted_image(output, image_bootfs, partition, 1, hash_a53_firmware, NULL);
 		exit(EXIT_SUCCESS);
 	} else if (sign_untrusted_image) {
 		do_sign_untrusted_image(keyfile, output, image_bootfs, partition, hash_a53_firmware);
@@ -830,7 +842,6 @@ int main(int argc, char **argv)
 
 	if (otp_read || deploy) {
 		struct mox_builder_data *mbd;
-		image_t *wtmi;
 
 		if (otp_read && images_given)
 			die("Images given when trying to read/write OTP");
@@ -849,23 +860,22 @@ int main(int argc, char **argv)
 			mbd->op = 0;
 		}
 
-		timh = image_new(NULL, 0, TIMH_ID);
-		tim_minimal_image(timh, 0, TIMH_ID, 1);
-		wtmi = image_new((void *) wtmi_data, wtmi_data_size, WTMI_ID);
-		tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, 0, 0, 1);
-		nimages = 2;
-		trusted = 0;
-		images_given = 1;
-
-		if (image_exists(OBMI_ID)) {
-			tim_add_image(timh, image_find(OBMI_ID), WTMI_ID, 0x64100000, settings.obmi_offset, 0, 0);
-			++nimages;
-
+		if (image_exists(OBMI_ID))
 			/* tell WTMI deploy() to not reset the SoC after deployment */
 			mbd->op = htole32(le32toh(mbd->op) | (1 << 31));
-		}
 
-		tim_rehash(timh);
+		image_new((void *) wtmi_data, wtmi_data_size, WTMI_ID);
+
+		if (sign) {
+			do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware, &nimages, &nimages_timn);
+			timh = image_find(TIMH_ID);
+			timn = image_find(TIMN_ID);
+			trusted = 1;
+		} else {
+			do_create_untrusted_image(NULL, BOOTFS_UART, 0, 0, hash_a53_firmware, &nimages);
+			timh = image_find(TIMH_ID);
+			trusted = 0;
+		}
 	} else if (images_given) {
 		int has_fast_mode;
 
