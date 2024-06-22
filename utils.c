@@ -21,10 +21,13 @@ void uart_terminal(void) {}
 
 __attribute__((noreturn)) void die(const char *fmt, ...)
 {
+	int saved_errno;
 	va_list ap;
 
 #ifndef GPP_COMPILER
+	saved_errno = errno;
 	closewtp();
+	errno = saved_errno;
 #endif
 
 	va_start(ap, fmt);
