@@ -466,8 +466,8 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 
 	mac = mac2u64(mac_address);
 
-	printf("Deploying device SN %016llX, board version %u, MAC %s\n",
-	       sn, bv, mac_address);
+	info("Deploying device SN %016llX, board version %u, MAC %s\n",
+	     sn, bv, mac_address);
 
 	mbd->op = htole32(1);
 	mbd->serial_number_low = htole32(sn & 0xffffffff);
@@ -985,6 +985,8 @@ int main(int argc, char **argv)
 	if (tty || fdstr) {
 		int i, nimages_all;
 
+		info("Going to send images to the device\n");
+
 		if (fdstr)
 			setwtpfd(fdstr);
 		else
@@ -1004,7 +1006,7 @@ int main(int argc, char **argv)
 			imgtype = selectimage();
 			img = image_find(imgtype);
 
-			printf("Sending image type %s\n", id2name(imgtype));
+			info("Sending image type %s\n", id2name(imgtype));
 			sendimage(img, i == nimages_all - 1);
 
 			if (baudrate && img->id == (timn ? TIMN_ID : TIMH_ID))
@@ -1031,7 +1033,7 @@ int main(int argc, char **argv)
 		if (timn)
 			die("TIMH + TIMN image saving not supported!");
 		save_flash_image(timh, output);
-		printf("Saved to image %s\n\n", output);
+		info("Saved to image %s\n\n", output);
 	}
 
 	exit(EXIT_SUCCESS);

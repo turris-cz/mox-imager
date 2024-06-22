@@ -217,7 +217,7 @@ void initwtp(int escape_seq)
 		xread(buf, 8);
 		if (memcmp(buf, "!\r\nwtp\r\n", 8))
 			die("Invalid reply for command wtp, try again");
-		printf("Initialized WTP download mode\n\n");
+		notice("Initialized WTP download mode\n\n");
 		return;
 	}
 
@@ -230,7 +230,7 @@ void initwtp(int escape_seq)
 	opts.c_iflag |= PARMRK;
 	xtcsetattr2(wtpfd, &opts);
 
-	printf("Sending escape sequence, please power up the device\n");
+	notice("Sending escape sequence, please power up the device\n");
 	seq_write_thread_start(&write_thread);
 
 	pfd.fd = wtpfd;
@@ -293,7 +293,7 @@ void initwtp(int escape_seq)
 						ack_count = 0;
 					} else if (buf[len - 1] != 0x3e) {
 						state_store(STATE_ESCAPE);
-						printf("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
+						notice("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
 						fflush(stdout);
 					}
 					len = 0;
@@ -319,7 +319,7 @@ void initwtp(int escape_seq)
 			} else {
 				state_store(STATE_ESCAPE);
 				seq_write_thread_start(&write_thread);
-				printf("\e[0KInvalid reply, try restarting again\r");
+				notice("\e[0KInvalid reply, try restarting again\r");
 				fflush(stdout);
 			}
 			break;
@@ -335,7 +335,7 @@ void initwtp(int escape_seq)
 				} else {
 					state_store(STATE_ESCAPE);
 					seq_write_thread_start(&write_thread);
-					printf("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
+					notice("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
 					fflush(stdout);
 				}
 			}
@@ -346,7 +346,7 @@ void initwtp(int escape_seq)
 		}
 	}
 
-	printf("\e[0KInitialized UART download mode\n\n");
+	info("\e[0KInitialized UART download mode\n\n");
 
 	/* restore previous iflag */
 	xtcgetattr2(wtpfd, &opts);
@@ -654,7 +654,7 @@ void try_change_baudrate(unsigned int baudrate)
 	int tbg_freq;
 	u32 div, m;
 
-	printf("Requesting baudrate change to %u baud\n", baudrate);
+	notice("Requesting baudrate change to %u baud\n", baudrate);
 
 	if (!isatty(wtpfd))
 		die("File descriptor is not tty and does not support baudrate change");
@@ -1165,7 +1165,7 @@ void uart_terminal(void) {
 		tio = otio;
 		cfmakeraw2(&tio);
 		xtcsetattr2(in, &tio);
-		printf("\r\n[Type Ctrl-%c + %c to quit]\r\n\r\n",
+		notice("\r\n[Type Ctrl-%c + %c to quit]\r\n\r\n",
 		       quit[0] | 0100, quit[1]);
 	}
 

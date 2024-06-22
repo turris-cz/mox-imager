@@ -20,29 +20,59 @@ int terminal_on_exit = 0;
 #pragma weak uart_terminal
 void uart_terminal(void) {}
 
-__attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt, ...)
+static int vffprintf(unsigned int attr, FILE *fp, const char * restrict fmt, va_list ap)
 {
-	int saved_errno, stderr_is_tty;
-	va_list ap;
+	int saved_errno, fd, is_tty, ret;
 
 	saved_errno = errno;
 
-#ifndef GPP_COMPILER
-	closewtp();
-#endif
+	fd = fileno(fp);
+	is_tty = fd >= 0 ? isatty(fd) : 0;
 
-	stderr_is_tty = isatty(STDERR_FILENO);
-	if (stderr_is_tty)
-		fputs("\033[31;1m", stderr);
+	if (is_tty && attr)
+		fprintf(fp, "\033[%d%sm", 30 + (attr & 7), (attr & 8) ? ";1" : "");
 
 	errno = saved_errno;
 
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
+	ret = vfprintf(fp, fmt, ap);
 
-	if (stderr_is_tty)
-		fputs("\033[0m", stderr);
+	if (is_tty && attr)
+		fputs("\033[0m", fp);
+
+	return ret;
+}
+
+__attribute__((__format__(printf, 1, 2))) void info(const char * restrict fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vffprintf(6, stdout, fmt, ap);
+	va_end(ap);
+}
+
+__attribute__((__format__(printf, 1, 2))) void notice(const char * restrict fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vffprintf(8 | 3, stdout, fmt, ap);
+	va_end(ap);
+}
+
+__attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt, ...)
+{
+	va_list ap;
+
+#ifndef GPP_COMPILER
+	int saved_errno = errno;
+	closewtp();
+	errno = saved_errno;
+#endif
+
+	va_start(ap, fmt);
+	vffprintf(8 | 1, stderr, fmt, ap);
+	va_end(ap);
 
 	fprintf(stderr, "\n\n");
 

@@ -889,7 +889,7 @@ static void tim_append_gpp_code(image_t *tim, const char *name, void *code,
 
 void tim_inject_baudrate_change_support(image_t *tim)
 {
-	printf("Injecting baudrate change code into GPP packages\n\n");
+	info("Injecting baudrate change code into GPP packages\n\n");
 	tim_append_gpp_code(tim, "DDR3", GPP_uart_baudrate_change,
 			    GPP_uart_baudrate_change_size);
 	tim_append_gpp_code(tim, "GPP2", GPP_uart_baudrate_change_back,
