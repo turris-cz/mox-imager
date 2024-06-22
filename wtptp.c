@@ -77,7 +77,7 @@ static void xread(void *buf, size_t size)
 	rd = 0;
 	while (rd < size) {
 		pfd.revents = 0;
-		res = poll(&pfd, 1, 10 * 1000);
+		res = poll(&pfd, 1, 2 * 1000);
 		if (res == 0)
 			die("Timeout while waiting for data!");
 		else if (res < 0)
