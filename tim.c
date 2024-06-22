@@ -515,7 +515,7 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 		die("Keys present in non-trusted TIM");
 
 	if (tim->size != tim_size(timhdr))
-		die("Invalid TIM length (%u, expected %u)", tim->size,
+		die("Invalid TIM length (%u, expected %zu)", tim->size,
 		    tim_size(timhdr));
 
 	platds = (void *) reserved_area(timhdr) + sizeofreserved;

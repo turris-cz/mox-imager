@@ -15,7 +15,7 @@ typedef unsigned short u16;
 typedef unsigned int u32;
 typedef unsigned long long u64;
 
-extern __attribute__((noreturn)) void die(const char *fmt, ...);
+extern __attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt, ...);
 extern double now(void);
 extern void *xmalloc(size_t sz);
 extern void *xrealloc(void *ptr, size_t sz);

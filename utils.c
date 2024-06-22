@@ -20,7 +20,7 @@ int terminal_on_exit = 0;
 #pragma weak uart_terminal
 void uart_terminal(void) {}
 
-__attribute__((noreturn)) void die(const char *fmt, ...)
+__attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt, ...)
 {
 	int saved_errno, stderr_is_tty;
 	va_list ap;

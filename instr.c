@@ -167,7 +167,7 @@ static void disasm(const char *lineprefix, struct insn *insn, const u32 *params,
 		case 'o':
 			op = find_op(params[idx]);
 			if (!op)
-				die("Unrecognized operation %u for instruction %s at position %u (+%d)", params[idx], insn->name, pos, idx);
+				die("Unrecognized operation %u for instruction %s at position %zu (+%d)", params[idx], insn->name, pos, idx);
 			len += sprintf(buf + len, "%s", op->repr);
 			break;
 		default:
@@ -190,10 +190,10 @@ int disassemble(const char *lineprefix, const u32 *input, size_t len, FILE *fp)
 		struct insn *insn = find_insn(input[0]);
 
 		if (!insn)
-			die("Unrecognized instruction with code %d at position %u", input[0], pos);
+			die("Unrecognized instruction with code %d at position %zu", input[0], pos);
 
 		if (len - 1 < insn->args)
-			die("Instruction %d (%s) at position %u has too few arguments (%d, needs %d)", input[0], insn->name, pos, len - 1, insn->args);
+			die("Instruction %d (%s) at position %zu has too few arguments (%zd, needs %d)", input[0], insn->name, pos, len - 1, insn->args);
 
 		disasm(lineprefix, insn, input, insn->args, pos, fp);
 
