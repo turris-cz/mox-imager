@@ -12,7 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 #include <endian.h>
 #include "tim.h"
 #include "utils.h"
@@ -50,38 +50,41 @@ _Bool image_exists(u32 id)
 void image_hash(u32 alg, void *buf, size_t size, void *out, u32 hashaddr)
 {
 	static const u32 zeros[16];
+	const EVP_MD *type;
+	EVP_MD_CTX *ctx;
 
 	memset(out, 0, 64);
 
-	if (alg == HASH_SHA256) {
-		SHA256_CTX ctx;
+	if (alg == HASH_SHA256)
+		type = EVP_sha256();
+	else if (alg == HASH_SHA512)
+		type = EVP_sha512();
+	else
+		die("Unsupported hash %s (ID = 0x%x)", hash2name(alg), alg);
 
-		SHA256_Init(&ctx);
-		if (hashaddr != -1U) {
-			SHA256_Update(&ctx, buf, hashaddr);
-			SHA256_Update(&ctx, zeros, 64);
-			SHA256_Update(&ctx, buf + hashaddr + 64,
-				      size - hashaddr - 64);
-		} else {
-			SHA256_Update(&ctx, buf, size);
-		}
-		SHA256_Final((void *) out, &ctx);
-	} else if (alg == HASH_SHA512) {
-		SHA512_CTX ctx;
+	ctx = EVP_MD_CTX_new();
 
-		SHA512_Init(&ctx);
-		if (hashaddr != -1U) {
-			SHA512_Update(&ctx, buf, hashaddr);
-			SHA512_Update(&ctx, zeros, 64);
-			SHA512_Update(&ctx, buf + hashaddr + 64,
-				      size - hashaddr - 64);
-		} else {
-			SHA512_Update(&ctx, buf, size);
-		}
-		SHA512_Final((void *) out, &ctx);
+	if (!EVP_DigestInit(ctx, type))
+		die("Failed initializing digest %s", hash2name(alg));
+
+	if (hashaddr != -1U) {
+		if (!EVP_DigestUpdate(ctx, buf, hashaddr) ||
+		    !EVP_DigestUpdate(ctx, zeros, 64) ||
+		    !EVP_DigestUpdate(ctx, buf + hashaddr + 64, size - hashaddr - 64))
+			goto fail;
 	} else {
-		die("Unsupported hash %s", hash2name(alg));
+		if (!EVP_DigestUpdate(ctx, buf, size))
+			goto fail;
 	}
+
+	if (!EVP_DigestFinal_ex(ctx, (void *)out, NULL))
+		goto fail;
+
+	EVP_MD_CTX_free(ctx);
+
+	return;
+fail:
+	die("Failed hashing (%s)", hash2name(alg));
 }
 
 image_t *image_new(void *data, u32 size, u32 id)
