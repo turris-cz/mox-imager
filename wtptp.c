@@ -499,7 +499,7 @@ static int compute_tbg_freq(int xtal, int fbdiv, int refdiv, int vcodiv_sel)
 
 static int compute_best_uart_params(u32 clk, u32 desired_baud, u32 *div, u32 *m)
 {
-	u8 m1, m2, m3, m4, best_m1, best_m2, best_m3, best_m4;
+	u8 m1, m2, m3, m4, best_m1 = 0, best_m2 = 0, best_m3 = 0, best_m4 = 0;
 	u64 ticks, ratio, err, best_err = -1ULL;
 	u32 d, d_max, best_d;
 	_Bool eq, best_eq = 0;
