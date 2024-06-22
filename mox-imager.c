@@ -267,7 +267,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 	if (bootfs == BOOTFS_UART) {
 		int has_fast_mode;
 
-		tim_parse(timh, NULL, 0, &has_fast_mode);
+		tim_parse(timh, NULL, 0, &has_fast_mode, NULL);
 
 		if (!has_fast_mode)
 			tim_inject_baudrate_change_support(timh);
@@ -281,7 +281,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 	timn = timh;
 
 	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
-	tim_parse(timh, NULL, gpp_disassemble, NULL);
+	tim_parse(timh, NULL, gpp_disassemble, NULL, stdout);
 
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
@@ -294,7 +294,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 		tim_enable_hash(timn, OBMI_ID, hash_obmi);
 	}
 	tim_sign(timn, key);
-	tim_parse(timn, NULL, gpp_disassemble, NULL);
+	tim_parse(timn, NULL, gpp_disassemble, NULL, stdout);
 
 	if (output)
 		write_image(output, timh, timn, wtmi, obmi);
@@ -316,7 +316,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	key = load_key(keyfile);
 
 	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
-	tim_parse(timh, nimages, gpp_disassemble, NULL);
+	tim_parse(timh, nimages, gpp_disassemble, NULL, stdout);
 
 	timn = image_new(NULL, 0, TIMN_ID);
 	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
@@ -329,7 +329,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 			      partition, hash_obmi);
 
 	tim_sign(timn, key);
-	tim_parse(timn, nimages_timn, gpp_disassemble, NULL);
+	tim_parse(timn, nimages_timn, gpp_disassemble, NULL, stdout);
 
 	if (output)
 		write_image(output, timh, timn, wtmi, obmi);
@@ -353,7 +353,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
-	tim_parse(timh, nimages, gpp_disassemble, NULL);
+	tim_parse(timh, nimages, gpp_disassemble, NULL, stdout);
 
 	if (output)
 		write_image(output, timh, NULL, wtmi, obmi);
@@ -415,7 +415,7 @@ static void do_get_otp_hash(u32 *hash)
 
 	tim = image_find(TIMH_ID);
 	/* check if the TIM is correct by parsing it */
-	tim_parse(tim, NULL, 0, NULL);
+	tim_parse(tim, NULL, 0, NULL, NULL);
 	tim_get_otp_hash(tim, hash);
 }
 
@@ -944,10 +944,10 @@ int main(int argc, char **argv)
 		}
 
 		tim_parse(timh, &nimages, gpp_disassemble,
-			  &has_fast_mode);
+			  &has_fast_mode, stdout);
 		if (timn)
 			tim_parse(timn, &nimages_timn, gpp_disassemble,
-				  &has_fast_mode);
+				  &has_fast_mode, stdout);
 
 		if (baudrate && !has_fast_mode) {
 			if (trusted)

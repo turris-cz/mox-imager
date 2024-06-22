@@ -387,7 +387,7 @@ void tim_minimal_image(image_t *tim, int trusted, u32 id, int support_fastmode)
 }
 
 void tim_parse(image_t *tim, int *numimagesp, int disasm,
-	       int *supports_baudrate_change)
+	       int *supports_baudrate_change, FILE *fp)
 {
 	static const u32 zerohash[16];
 	timhdr_t *timhdr;
@@ -412,18 +412,18 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 	bootfs = le32toh(timhdr->bootflashsign);
 	sizeofreserved = le32toh(timhdr->sizeofreserved);
 
-	printf("TIM version %u.%u.%02u, issue date %04x-%02x-%02x, %s, %u "
-	       "images, %u keys, boot flash sign %s\n",
-	       version >> 16, (version >> 8) & 0xff, version & 0xff,
-	       date & 0xffff, (date >> 16) & 0xff, date >> 24,
-	       timhdr->trusted ? "trusted" : "non-trusted", numimages, numkeys,
-	       bootfs2name(bootfs));
+	Fprintf(fp,
+		"TIM version %u.%u.%02u, issue date %04x-%02x-%02x, %s, %u images, %u keys, boot flash sign %s\n",
+		version >> 16, (version >> 8) & 0xff, version & 0xff,
+		date & 0xffff, (date >> 16) & 0xff, date >> 24,
+		timhdr->trusted ? "trusted" : "non-trusted", numimages, numkeys,
+		bootfs2name(bootfs));
 
-	printf("Reserved area packages:\n");
+	Fprintf(fp, "Reserved area packages:\n");
 	for (pkg = firstpkg(timhdr); pkg; pkg = nextpkg(timhdr, pkg)) {
 		u32 pkgid = le32toh(pkg->id);
 
-		printf("  %s (size %u)\n", id2name(pkgid), le32toh(pkg->size));
+		Fprintf(fp, "  %s (size %u)\n", id2name(pkgid), le32toh(pkg->size));
 		if (pkgid == PKG_IMAP) {
 			u32 i;
 
@@ -431,26 +431,26 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 				typeof(pkg->imap.maps[0]) *map;
 				map = &pkg->imap.maps[i];
 
-				printf("    Image map %i: %s, %s, entry "
-				       "address %08x, partition number %u\n", i,
-				       id2name(map->id),
-				       map->type ? "recovery" : "primary",
-				       le32toh(map->flashentryaddr[0]),
-				       le32toh(map->partitionnumber));
+				Fprintf(fp,
+					"    Image map %i: %s, %s, entry address %08x, partition number %u\n", i,
+					id2name(map->id),
+					map->type ? "recovery" : "primary",
+					le32toh(map->flashentryaddr[0]),
+					le32toh(map->partitionnumber));
 			}
 		} else if (pkgid == PKG_CIDP) {
 			struct cidp_t *cidp = &pkg->cidp.consumers[0];
 			u32 i, j, n;
 
 			for (i = 0; i < le32toh(pkg->cidp.nconsumers); ++i) {
-				printf("    Consumer %s, packages:",
+				Fprintf(fp, "    Consumer %s, packages:",
 					id2name(le32toh(cidp->id)));
 
 				n = le32toh(cidp->npkgs);
 				for (j = 0; j < n; ++j)
-					printf(" %s",
-					       id2name(le32toh(cidp->pkgs[j])));
-				printf("\n");
+					Fprintf(fp, " %s",
+						id2name(le32toh(cidp->pkgs[j])));
+				Fprintf(fp, "\n");
 
 				cidp = (void *)cidp + sizeof(*cidp) +
 				       n * sizeof(cidp->pkgs[0]);
@@ -472,22 +472,22 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 				opval = le32toh(op->value);
 				switch (opid) {
 				case 0x01:
-					printf("    Initialize DDR memory: %u\n", opval);
+					Fprintf(fp, "    Initialize DDR memory: %u\n", opval);
 					break;
 				case 0x02:
-					printf("    Enable memtest: %u\n", opval);
+					Fprintf(fp, "    Enable memtest: %u\n", opval);
 					break;
 				case 0x03:
-					printf("    Memtest start: 0x%x\n", opval);
+					Fprintf(fp, "    Memtest start: 0x%x\n", opval);
 					break;
 				case 0x04:
-					printf("    Memtest size: 0x%x\n", opval);
+					Fprintf(fp, "    Memtest size: 0x%x\n", opval);
 					break;
 				case 0x05:
-					printf("    Init attempts: %u\n", opval);
+					Fprintf(fp, "    Init attempts: %u\n", opval);
 					break;
 				case 0x06:
-					printf("    Ignore timeouts in instructions: %u\n", opval);
+					Fprintf(fp, "    Ignore timeouts in instructions: %u\n", opval);
 					break;
 				}
 				++op;
@@ -501,12 +501,12 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 							    memmem(code, len, "UAtx", 4) &&
 							    memmem(code, len, "baud", 4);
 				if (*supports_baudrate_change)
-					printf("    Contains code for baudrate change\n");
+					Fprintf(fp, "    Contains code for baudrate change\n");
 			}
 
 			if (disasm) {
-				printf("    Code (%u instructions):\n", ninst);
-				disassemble("\t", code, len / 4);
+				Fprintf(fp, "    Code (%u instructions):\n", ninst);
+				disassemble("\t", code, len / 4, fp);
 			}
 		}
 	}
@@ -520,10 +520,10 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 
 	platds = (void *) reserved_area(timhdr) + sizeofreserved;
 	if (timhdr->trusted)
-		printf("Platform digital signature algorithm %s, key size %u "
-		       "bits, hash %s\n", dsalg2name(le32toh(platds->dsalg)),
-		       le32toh(platds->keysize),
-		       hash2name(le32toh(platds->hashalg)));
+		Fprintf(fp, "Platform digital signature algorithm %s, key size %u bits, hash %s\n",
+			dsalg2name(le32toh(platds->dsalg)),
+			le32toh(platds->keysize),
+			hash2name(le32toh(platds->hashalg)));
 
 	start = (imginfo_t *) (timhdr + 1);
 	end = start + numimages;
@@ -548,12 +548,12 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 
 		nohash = !memcmp(i->hash, zerohash, sizeof(zerohash));
 
-		printf("Found %s, hash %s%s, encryption %s, size %u, load 0x%08x, flash 0x%08x\n",
-		       id2name(id), hash2name(hashalg),
-		       nohash ? " (hash zeroed)" : "",
-		       enc2name(le32toh(i->encalg)),
-		       size, le32toh(i->loadaddr),
-		       le32toh(i->flashentryaddr));
+		Fprintf(fp, "Found %s, hash %s%s, encryption %s, size %u, load 0x%08x, flash 0x%08x\n",
+			id2name(id), hash2name(hashalg),
+			nohash ? " (hash zeroed)" : "",
+			enc2name(le32toh(i->encalg)),
+			size, le32toh(i->loadaddr),
+			le32toh(i->flashentryaddr));
 
 		if (nohash)
 			continue;
@@ -570,7 +570,7 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 			die("Hash check failed for %s", id2name(id));
 	}
 
-	printf("\n");
+	Fprintf(fp, "\n");
 
 	if (numimagesp)
 		*numimagesp = numimages;
@@ -874,7 +874,7 @@ static void tim_append_gpp_code(image_t *tim, const char *name, void *code,
 	/* append code */
 	memcpy(codeend, code, codesize);
 	pkg->gpp.ninst = htole32(le32toh(pkg->gpp.ninst) +
-				 disassemble(NULL, code, codesize / 4));
+				 disassemble(NULL, code, codesize / 4, NULL));
 
 	/* change size members and rehash */
 	pkg->size = htole32(le32toh(pkg->size) + codesize);
@@ -925,7 +925,7 @@ static void tim_add_gpp_pkg(image_t *tim, const char *name, void *code,
 	pkg->id = htole32(name2id(name));
 	pkg->size = htole32(size);
 	pkg->gpp.nops = htole32(nops);
-	pkg->gpp.ninst = htole32(disassemble(NULL, code, codesize / 4));
+	pkg->gpp.ninst = htole32(disassemble(NULL, code, codesize / 4, NULL));
 
 	op = &pkg->gpp.ops[0];
 

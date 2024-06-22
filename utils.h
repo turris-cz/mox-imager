@@ -6,6 +6,8 @@
 #ifndef _UTILS_H_
 #define _UTILS_H_
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <endian.h>
 
 typedef unsigned char u8;
@@ -47,5 +49,27 @@ static inline _Bool is_id_valid(u32 id)
 
 	return 1;
 }
+
+#ifdef __GNUC__
+extern inline __attribute__((__format__(printf, 2, 3), __gnu_inline__)) void
+Fprintf(FILE *fp, const char * restrict fmt, ...)
+{
+	if (fp)
+		fprintf(fp, fmt, __builtin_va_arg_pack());
+}
+#else /* ! __GNUC__ */
+static inline __attribute__((__format__(printf, 2, 3))) void
+Fprintf(FILE *fp, const char * restrict fmt, ...)
+{
+	va_list ap;
+
+	if (!fp)
+		return;
+
+	va_start(ap, fmt);
+	vfprintf(fp, fmt, ap);
+	va_end(ap);
+}
+#endif /* ! __GNUC__ */
 
 #endif /* _UTILS_H_ */

@@ -128,21 +128,19 @@ static __attribute__((constructor)) void insns_init(void)
 		insn->args = count_args(insn->help);
 }
 
-static void disasm(const char *lineprefix, struct insn *insn, const u32 *params, int args, size_t pos)
+static void disasm(const char *lineprefix, struct insn *insn, const u32 *params, int args, size_t pos, FILE *fp)
 {
 	char buf[128];
 	int len = 0, idx = 1, i;
 	char *p = insn->help;
 	struct op *op;
 
-	if (lineprefix) {
-		printf("%s%-27s", lineprefix, insn->name);
-		for (i = 1; i <= args; ++i)
-			printf(" 0x%08X", params[i]);
-		for (; i <= 5; ++i)
-			printf("           ");
-		printf(" # ");
-	}
+	Fprintf(fp, "%s%-27s", lineprefix, insn->name);
+	for (i = 1; i <= args; ++i)
+		Fprintf(fp, " 0x%08X", params[i]);
+	for (; i <= 5; ++i)
+		Fprintf(fp, "           ");
+	Fprintf(fp, " # ");
 
 	while (*p) {
 		if (*p != '%') {
@@ -180,11 +178,10 @@ static void disasm(const char *lineprefix, struct insn *insn, const u32 *params,
 	}
 	buf[len++] = '\0';
 
-	if (lineprefix)
-		printf("%s\n", buf);
+	Fprintf(fp, "%s\n", buf);
 }
 
-int disassemble(const char *lineprefix, const u32 *input, size_t len)
+int disassemble(const char *lineprefix, const u32 *input, size_t len, FILE *fp)
 {
 	size_t pos = 0;
 	int res = 0;
@@ -198,7 +195,7 @@ int disassemble(const char *lineprefix, const u32 *input, size_t len)
 		if (len - 1 < insn->args)
 			die("Instruction %d (%s) at position %u has too few arguments (%d, needs %d)", input[0], insn->name, pos, len - 1, insn->args);
 
-		disasm(lineprefix, insn, input, insn->args, pos);
+		disasm(lineprefix, insn, input, insn->args, pos, fp);
 
 		input += insn->args + 1;
 		pos += insn->args + 1;
