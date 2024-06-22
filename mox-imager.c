@@ -638,6 +638,8 @@ int main(int argc, char **argv)
 			if (tty)
 				die("Device already given");
 			tty = optarg;
+			if (access(tty, R_OK | W_OK))
+				die("Don't have read/write access to device %s: %m", tty);
 			break;
 		case 'b':
 			baudrate = atoi(optarg);
