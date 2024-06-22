@@ -112,7 +112,7 @@ image_t *image_new(void *data, u32 size, u32 id)
 	return images + i;
 }
 
-static int do_load(const void *data, size_t data_size, u32 hdr_addr)
+static int do_load(void *data, size_t data_size, u32 hdr_addr)
 {
 	static u32 wait_ids[32];
 
@@ -273,7 +273,7 @@ void image_load(const char *path)
 	do_load(data, st.st_size, 0);
 }
 
-void image_load_bundled(const void *data, size_t size)
+void image_load_bundled(void *data, size_t size)
 {
 	do_load(data, size, 0);
 }
