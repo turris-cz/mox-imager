@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <sys/random.h>
 #include <time.h>
@@ -21,18 +22,27 @@ void uart_terminal(void) {}
 
 __attribute__((noreturn)) void die(const char *fmt, ...)
 {
-	int saved_errno;
+	int saved_errno, stderr_is_tty;
 	va_list ap;
 
-#ifndef GPP_COMPILER
 	saved_errno = errno;
+
+#ifndef GPP_COMPILER
 	closewtp();
-	errno = saved_errno;
 #endif
+
+	stderr_is_tty = isatty(STDERR_FILENO);
+	if (stderr_is_tty)
+		fputs("\033[31;1m", stderr);
+
+	errno = saved_errno;
 
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
+
+	if (stderr_is_tty)
+		fputs("\033[0m", stderr);
 
 	fprintf(stderr, "\n\n");
 
