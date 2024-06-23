@@ -17,6 +17,7 @@
 #include <math.h>
 #include <endian.h>
 #include <pthread.h>
+#include "tim.h"
 #include "utils.h"
 #include "wtptp.h"
 
@@ -30,6 +31,10 @@
 #endif
 
 static int wtpfd = -1;
+static u32 last_image_sent;
+static int sent_timh_was_trusted;
+static const char *xread_timed_out_msg;
+static const char *nack_msg;
 
 static inline void xtcdrain(int fd)
 {
@@ -79,7 +84,8 @@ static void xread(void *buf, size_t size)
 		pfd.revents = 0;
 		res = poll(&pfd, 1, 2 * 1000);
 		if (res == 0)
-			die("Timeout while waiting for data!");
+			die("Timed out while waiting for response!%s",
+			    xread_timed_out_msg ?: "");
 		else if (res < 0)
 			die("Cannot poll: %m");
 
@@ -422,6 +428,11 @@ void openwtp(const char *path)
 	/* unset O_NONBLOCK */
 	if (fcntl(wtpfd, F_SETFL, flags & ~O_NONBLOCK))
 		die("Unsetting O_NONBLOCK failed: %m");
+
+	last_image_sent = 0;
+	sent_timh_was_trusted = 0;
+	xread_timed_out_msg = NULL;
+	nack_msg = NULL;
 }
 
 void closewtp(void)
@@ -733,7 +744,7 @@ static void checkresp(resp_t *resp)
 	if (resp->status == 0x2)
 		die("Sequence error on command %02x", resp->cmd);
 	else if (resp->status == 0x1)
-		die("NACK on command %02x", resp->cmd);
+		die("NACK on command %02x%s", resp->cmd, nack_msg ?: "");
 }
 
 static void sendcmd(u8 cmd, u8 seq, u8 cid, u8 flags, u32 len, const void *data,
@@ -801,6 +812,9 @@ u32 selectimage(void)
 
 	preamble();
 	getversion();
+
+	if (last_image_sent == TIMH_ID)
+		xread_timed_out_msg = nack_msg = NULL;
 
 	sendcmd(0x26, 0, 0, 0, 0, NULL, &resp);
 
@@ -885,6 +899,22 @@ void sendimage(image_t *img, int fast)
 	}
 
 	sendcmd(0x30, 0, 0, 0, 0, NULL, &resp);
+
+	last_image_sent = img->id;
+	if (img->id == TIMH_ID) {
+		sent_timh_was_trusted = tim_is_trusted(img);
+
+		if (sent_timh_was_trusted)
+			nack_msg = "\n\nProbable reason:\n"
+				   "  The image may have been rejected because it is cryptographically\n"
+				   "  signed with a different private key than the board requires, or the\n"
+				   "  signature was somehow corrupted.";
+		else
+			xread_timed_out_msg = "\n\nProbable reason:\n"
+					      "  The image may have been rejected because it is not a trusted image\n"
+					      "  and the board is trusted (EFUSEs are burned so that it will only\n"
+					      "  boot a cryptographically signed image).";
+	}
 }
 
 static void eccread(void *_buf, size_t size)
