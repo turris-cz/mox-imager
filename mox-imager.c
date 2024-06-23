@@ -281,7 +281,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 	timn = timh;
 
 	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
-	tim_parse(timh, NULL, gpp_disassemble, NULL, stdout);
+	tim_parse(timh, NULL, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
@@ -294,7 +294,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 		tim_enable_hash(timn, OBMI_ID, hash_obmi);
 	}
 	tim_sign(timn, key);
-	tim_parse(timn, NULL, gpp_disassemble, NULL, stdout);
+	tim_parse(timn, NULL, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	if (output)
 		write_image(output, timh, timn, wtmi, obmi);
@@ -316,7 +316,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	key = load_key(keyfile);
 
 	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
-	tim_parse(timh, nimages, gpp_disassemble, NULL, stdout);
+	tim_parse(timh, nimages, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	timn = image_new(NULL, 0, TIMN_ID);
 	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
@@ -329,7 +329,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 			      partition, hash_obmi);
 
 	tim_sign(timn, key);
-	tim_parse(timn, nimages_timn, gpp_disassemble, NULL, stdout);
+	tim_parse(timn, nimages_timn, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	if (output)
 		write_image(output, timh, timn, wtmi, obmi);
@@ -353,7 +353,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
-	tim_parse(timh, nimages, gpp_disassemble, NULL, stdout);
+	tim_parse(timh, nimages, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	if (output)
 		write_image(output, timh, NULL, wtmi, obmi);
