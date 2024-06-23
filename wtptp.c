@@ -824,7 +824,7 @@ u32 selectimage(void)
 	return *(u32 *) resp.data;
 }
 
-void sendimage(image_t *img, int fast)
+void sendimage(image_t *img, int fast, const char *otp_read, int deploy)
 {
 	static int seq = 1;
 	resp_t resp;
@@ -904,16 +904,31 @@ void sendimage(image_t *img, int fast)
 	if (img->id == TIMH_ID) {
 		sent_timh_was_trusted = tim_is_trusted(img);
 
-		if (sent_timh_was_trusted)
-			nack_msg = "\n\nProbable reason:\n"
-				   "  The image may have been rejected because it is cryptographically\n"
-				   "  signed with a different private key than the board requires, or the\n"
-				   "  signature was somehow corrupted.";
-		else
-			xread_timed_out_msg = "\n\nProbable reason:\n"
-					      "  The image may have been rejected because it is not a trusted image\n"
-					      "  and the board is trusted (EFUSEs are burned so that it will only\n"
-					      "  boot a cryptographically signed image).";
+		if (deploy) {
+			nack_msg = xread_timed_out_msg =
+				"\n\nProbable reason:\n"
+				"  Deploying failed becuase the board is already deployed (EFUSEs are already burned).";
+		} else if (otp_read) {
+			if (sent_timh_was_trusted)
+				nack_msg = "\n\nProbable reason:\n"
+					   "  OTP reading may have failed because you specified board a wrong board\n"
+					   "  vendor with the -R / --otp-read option.";
+			else
+				xread_timed_out_msg = "\n\nProbable reason:\n"
+						      "  OTP reading may have failed because the board is trusted and you did\n"
+						      "  not specify board vendor (see the -R / --otp-read option in --help).";
+		} else {
+			if (sent_timh_was_trusted)
+				nack_msg = "\n\nProbable reason:\n"
+					   "  The image may have been rejected because it is cryptographically\n"
+					   "  signed with a different private key than the board requires, or the\n"
+					   "  signature was somehow corrupted.";
+			else
+				xread_timed_out_msg = "\n\nProbable reason:\n"
+						      "  The image may have been rejected because it is not a trusted image\n"
+						      "  and the board is trusted (EFUSEs are burned so that it will only\n"
+						      "  boot a cryptographically signed image).";
+		}
 	}
 }
 

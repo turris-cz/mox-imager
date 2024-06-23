@@ -1007,7 +1007,7 @@ int main(int argc, char **argv)
 			img = image_find(imgtype);
 
 			info("Sending image type %s\n", id2name(imgtype));
-			sendimage(img, i == nimages_all - 1);
+			sendimage(img, i == nimages_all - 1, otp_read, deploy);
 
 			if (baudrate && img->id == (timn ? TIMN_ID : TIMH_ID))
 				try_change_baudrate(baudrate);
