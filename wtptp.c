@@ -911,8 +911,8 @@ void sendimage(image_t *img, int fast, const char *otp_read, int deploy)
 		} else if (otp_read) {
 			if (sent_timh_was_trusted)
 				nack_msg = "\n\nProbable reason:\n"
-					   "  OTP reading may have failed because you specified board a wrong board\n"
-					   "  vendor with the -R / --otp-read option.";
+					   "  OTP reading may have failed because you specified a wrong board vendor\n"
+					   "  with the -R / --otp-read option.";
 			else
 				xread_timed_out_msg = "\n\nProbable reason:\n"
 						      "  OTP reading may have failed because the board is trusted and you did\n"
