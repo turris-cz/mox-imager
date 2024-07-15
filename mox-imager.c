@@ -614,6 +614,17 @@ static void create_otp_read_image(int sign, const char *keyfile)
 	create_image_from_bundled_wtmi(sign, keyfile, 0);
 }
 
+static void do_otp_read(const char *otp_read, int sign, const char *keyfile,
+			const char *tty, const char *fdstr, int send_escape, int baudrate)
+{
+	if (!strcmp(otp_read, ""))
+		create_otp_read_image(sign, keyfile);
+	else
+		load_bundled_otp_read_image(otp_read);
+
+	do_uart(tty, fdstr, send_escape, otp_read, 0, 0, baudrate);
+}
+
 static void set_bootfs_if_possible(u32 bootfs)
 {
 	image_t *timh = image_find(TIMH_ID);
@@ -1014,10 +1025,8 @@ int main(int argc, char **argv)
 		die("No images given, try -h for help");
 
 	if (otp_read) {
-		if (!strcmp(otp_read, ""))
-			create_otp_read_image(sign, keyfile);
-		else
-			load_bundled_otp_read_image(otp_read);
+		do_otp_read(otp_read, sign, keyfile, tty, fdstr, send_escape, baudrate);
+		exit(EXIT_SUCCESS);
 	} else if (deploy) {
 		create_deploy_image(deploy_no_board_info, serial_number, mac_address,
 				    board, board_version, otp_hash, sign, keyfile,
