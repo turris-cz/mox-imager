@@ -519,7 +519,8 @@ static void do_uart(const char *tty, const char *fdstr, int send_escape,
 
 	nimages = get_nimages_to_send();
 
-	info("Going to send images to the device\n");
+	if (nimages)
+		info("Going to send images to the device\n");
 
 	if (fdstr)
 		setwtpfd(fdstr);
