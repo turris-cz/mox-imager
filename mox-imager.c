@@ -542,7 +542,7 @@ static void do_uart(const char *tty, const char *fdstr, int nimages,
 	closewtp();
 }
 
-static void load_otp_read_image(const char *otp_read)
+static void load_bundled_otp_read_image(const char *otp_read)
 {
 	if (!strcmp(otp_read, "testing")) {
 #include "bundled-read-otp-testing.c"
@@ -926,7 +926,7 @@ int main(int argc, char **argv)
 		die("No images given, try -h for help");
 
 	if (otp_read && strcmp(otp_read, "")) {
-		load_otp_read_image(otp_read);
+		load_bundled_otp_read_image(otp_read);
 		timh = image_find(TIMH_ID);
 		timn = image_find(TIMN_ID);
 		nimages = 3;
