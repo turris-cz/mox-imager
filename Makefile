@@ -16,7 +16,7 @@ else
 endif
 LDFLAGS := -lm -ltinfo $(LDFLAGS_LIBCRYPTO)
 
-SRCS = $(filter-out gppc.c bin2c.c bundled-wtmi.c read-otp-%.c,$(wildcard *.c))
+SRCS = $(filter-out gppc.c bin2c.c bundled-%.c,$(wildcard *.c))
 DEPS = $(patsubst %.c,%.d,$(SRCS))
 OBJS = $(patsubst %.c,%.o,$(SRCS))
 

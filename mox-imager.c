@@ -545,11 +545,11 @@ static void do_uart(const char *tty, const char *fdstr, int nimages,
 static void load_otp_read_image(const char *otp_read)
 {
 	if (!strcmp(otp_read, "testing")) {
-#include "read-otp-testing.c"
-		image_load_bundled(read_otp_data, read_otp_data_size);
+#include "bundled-read-otp-testing.c"
+		image_load_bundled(bundled_read_otp_data, bundled_read_otp_data_size);
 	} else if (!strcmp(otp_read, "RAD")) {
-#include "read-otp-rad.c"
-		image_load_bundled(read_otp_data, read_otp_data_size);
+#include "bundled-read-otp-rad.c"
+		image_load_bundled(bundled_read_otp_data, bundled_read_otp_data_size);
 	} else {
 		die("Invalid value for option --otp-read. Supported values: \"testing\", \"RAD\"");
 	}
