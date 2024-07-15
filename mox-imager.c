@@ -900,7 +900,7 @@ int main(int argc, char **argv)
 	images_given = argc - optind;
 
 	if (otp_read && images_given)
-		die("Images given when trying to read/write OTP");
+		die("Images given when trying to read OTP");
 
 	for (; optind < argc; ++optind)
 		image_load(argv[optind]);
