@@ -573,6 +573,36 @@ static void load_bundled_otp_read_image(const char *otp_read)
 	}
 }
 
+static void set_bootfs_if_possible(u32 bootfs)
+{
+	image_t *timh = image_find(TIMH_ID);
+
+	if (tim_is_trusted(timh))
+		return;
+
+	tim_set_boot(timh, bootfs);
+}
+
+static void ensure_image_rehash_or_sign_if_possible(int sign, const char *keyfile)
+{
+	image_t *timh = image_find(TIMH_ID), *timn = NULL;
+
+	if (tim_is_trusted(timh))
+		return;
+
+	if (image_exists(TIMN_ID))
+		timn = image_find(TIMN_ID);
+
+	if (sign) {
+		EC_KEY *key = load_key(keyfile);
+		tim_sign(timh, key);
+	} else {
+		tim_rehash(timh);
+		if (timn)
+			tim_rehash(timn);
+	}
+}
+
 static u32 parse_u32_opt(const char *opt, const char *arg, u32 min, u32 max)
 {
 	unsigned long val;
@@ -683,7 +713,6 @@ int main(int argc, char **argv)
 	    create_untrusted_image, sign_untrusted_image, send_escape, baudrate,
 	    genkey, dummy;
 	u32 image_bootfs = 0, partition;
-	image_t *timh = NULL, *timn = NULL;
 	int images_given;
 
 	tty = fdstr = output = keyfile = seed = genkey_output = serial_number =
@@ -945,8 +974,6 @@ int main(int argc, char **argv)
 
 	if (otp_read && strcmp(otp_read, "")) {
 		load_bundled_otp_read_image(otp_read);
-		timh = image_find(TIMH_ID);
-		timn = image_find(TIMN_ID);
 	} else if (otp_read || deploy) {
 		struct mox_builder_data *mbd;
 
@@ -970,15 +997,12 @@ int main(int argc, char **argv)
 
 		image_new((void *) bundled_wtmi_data, bundled_wtmi_data_size, WTMI_ID);
 
-		if (sign) {
+		if (sign)
 			do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
-			timh = image_find(TIMH_ID);
-			timn = image_find(TIMN_ID);
-		} else {
+		else
 			do_create_untrusted_image(NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
-			timh = image_find(TIMH_ID);
-		}
 	} else if (images_given) {
+		image_t *timh = NULL, *timn = NULL;
 		int has_fast_mode;
 
 		if (get_otp_hash) {
@@ -1019,31 +1043,22 @@ int main(int argc, char **argv)
 			tim_enable_hash(timh, OBMI_ID, hash_a53_firmware);
 	}
 
-	if (images_given && !tim_is_trusted(timh)) {
+	if (images_given) {
 		if (tty || fdstr)
-			tim_set_boot(timh, BOOTFS_UART);
+			set_bootfs_if_possible(BOOTFS_UART);
 		else if (output)
-			tim_set_boot(timh, BOOTFS_SPINOR);
+			set_bootfs_if_possible(BOOTFS_SPINOR);
 
-		if (sign) {
-			EC_KEY *key = load_key(keyfile);
-			tim_sign(timh, key);
-			if (timn)
-				tim_sign(timn, key);
-		} else {
-			tim_rehash(timh);
-			if (timn)
-				tim_rehash(timn);
-		}
+		ensure_image_rehash_or_sign_if_possible(sign, keyfile);
 	}
 
 	if (tty || fdstr)
 		do_uart(tty, fdstr, send_escape, otp_read, deploy, deploy_no_board_info, baudrate);
 
 	if (output) {
-		if (timn)
+		if (image_exists(TIMN_ID))
 			die("TIMH + TIMN image saving not supported!");
-		save_flash_image(timh, output);
+		save_flash_image(image_find(TIMH_ID), output);
 		info("Saved to image %s\n\n", output);
 	}
 
