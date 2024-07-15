@@ -947,7 +947,6 @@ int main(int argc, char **argv)
 		load_bundled_otp_read_image(otp_read);
 		timh = image_find(TIMH_ID);
 		timn = image_find(TIMN_ID);
-		images_given = 1;
 	} else if (otp_read || deploy) {
 		struct mox_builder_data *mbd;
 
