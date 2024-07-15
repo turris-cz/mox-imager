@@ -16,7 +16,7 @@ else
 endif
 LDFLAGS := -lm -ltinfo $(LDFLAGS_LIBCRYPTO)
 
-SRCS = $(filter-out gppc.c bin2c.c wtmi.c read-otp-%.c,$(wildcard *.c))
+SRCS = $(filter-out gppc.c bin2c.c bundled-wtmi.c read-otp-%.c,$(wildcard *.c))
 DEPS = $(patsubst %.c,%.d,$(SRCS))
 OBJS = $(patsubst %.c,%.o,$(SRCS))
 
@@ -46,8 +46,8 @@ tim.c: $(GPPS)
 refresh-wtmi: bin2c
 	make -C $(WTMI_PATH) clean
 	make -C $(WTMI_PATH) DEPLOY=1 LTO=1
-	./bin2c wtmi_data <$(WTMI_PATH)/wtmi.bin >wtmi.c
-	git commit -sm "Refresh wtmi.c" wtmi.c
+	./bin2c bundled_wtmi_data <$(WTMI_PATH)/wtmi.bin >bundled-wtmi.c
+	git commit -sm "Refresh bundled-wtmi.c" bundled-wtmi.c
 
 bin2c: bin2c.o
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)

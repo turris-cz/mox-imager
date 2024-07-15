@@ -25,8 +25,6 @@
 #include "key.h"
 #include "images.h"
 
-#include "wtmi.c"
-
 struct settings {
 	u32 timn_offset;
 	u32 wtmi_offset;
@@ -394,6 +392,8 @@ static u64 mac2u64(const char *mac)
 	return res;
 }
 
+#include "bundled-wtmi.c"
+
 struct mox_builder_data *find_mbd(void)
 {
 	struct mox_builder_data needle = {
@@ -403,9 +403,9 @@ struct mox_builder_data *find_mbd(void)
 	};
 	void *h, *n, *r;
 
-	h = wtmi_data;
+	h = bundled_wtmi_data;
 	n = &needle;
-	r = memmem(h, wtmi_data_size, n, sizeof(needle));
+	r = memmem(h, bundled_wtmi_data_size, n, sizeof(needle));
 	if (!r)
 		die("Cannot find MBD structure in WTMI image");
 
@@ -953,7 +953,7 @@ int main(int argc, char **argv)
 			/* tell WTMI deploy() to not reset the SoC after deployment */
 			mbd->op = htole32(le32toh(mbd->op) | (1 << 31));
 
-		image_new((void *) wtmi_data, wtmi_data_size, WTMI_ID);
+		image_new((void *) bundled_wtmi_data, bundled_wtmi_data_size, WTMI_ID);
 
 		if (sign) {
 			do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware, &nimages);
