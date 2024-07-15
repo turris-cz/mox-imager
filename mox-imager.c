@@ -666,7 +666,7 @@ int main(int argc, char **argv)
 	    genkey, dummy;
 	u32 image_bootfs = 0, partition;
 	image_t *timh = NULL, *timn = NULL;
-	int nimages, images_given, trusted;
+	int nimages, images_given;
 
 	tty = fdstr = output = keyfile = seed = genkey_output = serial_number =
               mac_address = board = board_version = otp_hash = otp_read = NULL;
@@ -930,7 +930,6 @@ int main(int argc, char **argv)
 		timh = image_find(TIMH_ID);
 		timn = image_find(TIMN_ID);
 		nimages = 3;
-		trusted = 1;
 		images_given = 1;
 	} else if (otp_read || deploy) {
 		struct mox_builder_data *mbd;
@@ -959,11 +958,9 @@ int main(int argc, char **argv)
 			do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware, &nimages);
 			timh = image_find(TIMH_ID);
 			timn = image_find(TIMN_ID);
-			trusted = 1;
 		} else {
 			do_create_untrusted_image(NULL, BOOTFS_UART, 0, 0, hash_a53_firmware, &nimages);
 			timh = image_find(TIMH_ID);
-			trusted = 0;
 		}
 	} else if (images_given) {
 		int has_fast_mode;
@@ -984,10 +981,8 @@ int main(int argc, char **argv)
 		if (tim_imap_pkg_addr(timh, name2id("CSKT")) != -1U)
 			timn = image_find(TIMN_ID);
 
-		trusted = tim_is_trusted(timh);
-
 		if (no_a53_firmware) {
-			if (trusted)
+			if (tim_is_trusted(timh))
 				die("Cannot modify trusted image!");
 			tim_remove_image(timh, name2id("OBMI"));
 			tim_rehash(timh);
@@ -1005,20 +1000,19 @@ int main(int argc, char **argv)
 		}
 
 		if (baudrate && !has_fast_mode) {
-			if (trusted)
+			if (tim_is_trusted(timh))
 				die("Fast upload mode not supported by this image\n"
 				    "and cannot inject the code into trusted image!");
 			tim_inject_baudrate_change_support(timn ? : timh);
 		}
 
-		if (!trusted)
+		if (!tim_is_trusted(timh))
 			tim_enable_hash(timh, OBMI_ID, hash_a53_firmware);
 	} else {
 		nimages = 0;
-		trusted = 0;
 	}
 
-	if (images_given && !trusted) {
+	if (images_given && !tim_is_trusted(timh)) {
 		if (tty || fdstr)
 			tim_set_boot(timh, BOOTFS_UART);
 		else if (output)
