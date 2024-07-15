@@ -386,8 +386,7 @@ void tim_minimal_image(image_t *tim, int trusted, u32 id, int support_fastmode)
 				1, 0, 0, 0, 0, 0, 0);
 }
 
-void tim_parse(image_t *tim, int *numimagesp, int disasm,
-	       int *supports_baudrate_change, FILE *fp)
+void tim_parse(image_t *tim, int disasm, int *supports_baudrate_change, FILE *fp)
 {
 	static const u32 zerohash[16];
 	timhdr_t *timhdr;
@@ -571,9 +570,6 @@ void tim_parse(image_t *tim, int *numimagesp, int disasm,
 	}
 
 	Fprintf(fp, "\n");
-
-	if (numimagesp)
-		*numimagesp = numimages;
 }
 
 static void tim_grow(image_t *tim, u32 growby)

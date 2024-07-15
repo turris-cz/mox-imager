@@ -292,8 +292,7 @@ extern void tim_image_set_flashaddr(image_t *tim, u32 id, u32 flashaddr, u32 par
 extern u32 tim_imap_pkg_addr(image_t *tim, u32 id);
 extern void tim_imap_pkg_addr_set(image_t *tim, u32 id, u32 flashentry,
 				  u32 partition);
-extern void tim_parse(image_t *tim, int *numimagesp, int disasm,
-		      int *supports_baudrate_change, FILE *fp);
+extern void tim_parse(image_t *tim, int disasm, int *supports_baudrate_change, FILE *fp);
 extern void tim_enable_hash(image_t *tim, u32 id, int enable);
 extern void tim_rehash(image_t *tim);
 extern void tim_inject_baudrate_change_support(image_t *tim);

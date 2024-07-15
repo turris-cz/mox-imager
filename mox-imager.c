@@ -265,7 +265,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 	if (bootfs == BOOTFS_UART) {
 		int has_fast_mode;
 
-		tim_parse(timh, NULL, 0, &has_fast_mode, NULL);
+		tim_parse(timh, 0, &has_fast_mode, NULL);
 
 		if (!has_fast_mode)
 			tim_inject_baudrate_change_support(timh);
@@ -279,7 +279,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 	timn = timh;
 
 	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
-	tim_parse(timh, NULL, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timh, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
@@ -292,7 +292,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 		tim_enable_hash(timn, OBMI_ID, hash_obmi);
 	}
 	tim_sign(timn, key);
-	tim_parse(timn, NULL, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timn, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	if (output)
 		write_image(output, timh, timn, wtmi, obmi);
@@ -300,12 +300,11 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 
 static void do_create_trusted_image(const char *keyfile, const char *output,
 				    u32 bootfs, u32 partition, int needs_obmi,
-				    int hash_obmi, int *nimages)
+				    int hash_obmi)
 {
 	EC_KEY *key;
 	image_t *timh, *timn, *wtmi, *obmi;
 	u32 timh_loadaddr, timn_loadaddr;
-	int nimages_timn;
 
 	loadaddrs_for_bootfs(bootfs, &timh_loadaddr, &timn_loadaddr);
 
@@ -315,7 +314,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	key = load_key(keyfile);
 
 	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
-	tim_parse(timh, nimages, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timh, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	timn = image_new(NULL, 0, TIMN_ID);
 	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
@@ -328,16 +327,14 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 			      partition, hash_obmi);
 
 	tim_sign(timn, key);
-	tim_parse(timn, &nimages_timn, gpp_disassemble, NULL, output ? stdout : NULL);
-	if (*nimages)
-		*nimages += nimages_timn;
+	tim_parse(timn, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	if (output)
 		write_image(output, timh, timn, wtmi, obmi);
 }
 
 static void do_create_untrusted_image(const char *output, u32 bootfs,
-				      u32 partition, int needs_obmi, int hash_obmi, int *nimages)
+				      u32 partition, int needs_obmi, int hash_obmi)
 {
 	image_t *timh, *wtmi, *obmi;
 
@@ -354,7 +351,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
-	tim_parse(timh, nimages, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timh, gpp_disassemble, NULL, output ? stdout : NULL);
 
 	if (output)
 		write_image(output, timh, NULL, wtmi, obmi);
@@ -418,7 +415,7 @@ static void do_get_otp_hash(u32 *hash)
 
 	tim = image_find(TIMH_ID);
 	/* check if the TIM is correct by parsing it */
-	tim_parse(tim, NULL, 0, NULL, NULL);
+	tim_parse(tim, 0, NULL, NULL);
 	tim_get_otp_hash(tim, hash);
 }
 
@@ -495,12 +492,32 @@ static void do_deploy_no_board_info(struct mox_builder_data *mbd,
 	parse_otp_hash(mbd, otp_hash);
 }
 
-static void do_uart(const char *tty, const char *fdstr, int nimages,
-		    int send_escape, const char *otp_read, int deploy,
-		    int deploy_no_board_info, int baudrate)
+static int get_nimages_to_send(void)
+{
+	int nimages = 0;
+	image_t *tim;
+
+	if (image_exists(TIMH_ID)) {
+		tim = image_find(TIMH_ID);
+		nimages = tim_nimages((const timhdr_t *)tim->data);
+
+		if (image_exists(TIMN_ID)) {
+			tim = image_find(TIMN_ID);
+			nimages += tim_nimages((const timhdr_t *)tim->data);
+		}
+	}
+
+	return nimages;
+}
+
+static void do_uart(const char *tty, const char *fdstr, int send_escape,
+		    const char *otp_read, int deploy, int deploy_no_board_info,
+		    int baudrate)
 {
 	_Bool has_timn = image_exists(TIMN_ID);
-	int i;
+	int nimages, i;
+
+	nimages = get_nimages_to_send();
 
 	info("Going to send images to the device\n");
 
@@ -666,7 +683,7 @@ int main(int argc, char **argv)
 	    genkey, dummy;
 	u32 image_bootfs = 0, partition;
 	image_t *timh = NULL, *timn = NULL;
-	int nimages, images_given;
+	int images_given;
 
 	tty = fdstr = output = keyfile = seed = genkey_output = serial_number =
               mac_address = board = board_version = otp_hash = otp_read = NULL;
@@ -912,10 +929,10 @@ int main(int argc, char **argv)
 		partition = 0;
 
 	if (create_trusted_image) {
-		do_create_trusted_image(keyfile, output, image_bootfs, partition, 1, hash_a53_firmware, NULL);
+		do_create_trusted_image(keyfile, output, image_bootfs, partition, 1, hash_a53_firmware);
 		exit(EXIT_SUCCESS);
 	} else if (create_untrusted_image) {
-		do_create_untrusted_image(output, image_bootfs, partition, 1, hash_a53_firmware, NULL);
+		do_create_untrusted_image(output, image_bootfs, partition, 1, hash_a53_firmware);
 		exit(EXIT_SUCCESS);
 	} else if (sign_untrusted_image) {
 		do_sign_untrusted_image(keyfile, output, image_bootfs, partition, hash_a53_firmware);
@@ -929,7 +946,6 @@ int main(int argc, char **argv)
 		load_bundled_otp_read_image(otp_read);
 		timh = image_find(TIMH_ID);
 		timn = image_find(TIMN_ID);
-		nimages = 3;
 		images_given = 1;
 	} else if (otp_read || deploy) {
 		struct mox_builder_data *mbd;
@@ -955,11 +971,11 @@ int main(int argc, char **argv)
 		image_new((void *) bundled_wtmi_data, bundled_wtmi_data_size, WTMI_ID);
 
 		if (sign) {
-			do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware, &nimages);
+			do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
 			timh = image_find(TIMH_ID);
 			timn = image_find(TIMN_ID);
 		} else {
-			do_create_untrusted_image(NULL, BOOTFS_UART, 0, 0, hash_a53_firmware, &nimages);
+			do_create_untrusted_image(NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
 			timh = image_find(TIMH_ID);
 		}
 	} else if (images_given) {
@@ -988,16 +1004,9 @@ int main(int argc, char **argv)
 			tim_rehash(timh);
 		}
 
-		tim_parse(timh, &nimages, gpp_disassemble,
-			  &has_fast_mode, stdout);
-		if (timn) {
-			int nimages_timn;
-
-			tim_parse(timn, &nimages_timn, gpp_disassemble,
-				  &has_fast_mode, stdout);
-
-			nimages += nimages_timn;
-		}
+		tim_parse(timh, gpp_disassemble, &has_fast_mode, stdout);
+		if (timn)
+			tim_parse(timn, gpp_disassemble, &has_fast_mode, stdout);
 
 		if (baudrate && !has_fast_mode) {
 			if (tim_is_trusted(timh))
@@ -1008,8 +1017,6 @@ int main(int argc, char **argv)
 
 		if (!tim_is_trusted(timh))
 			tim_enable_hash(timh, OBMI_ID, hash_a53_firmware);
-	} else {
-		nimages = 0;
 	}
 
 	if (images_given && !tim_is_trusted(timh)) {
@@ -1031,8 +1038,7 @@ int main(int argc, char **argv)
 	}
 
 	if (tty || fdstr)
-		do_uart(tty, fdstr, nimages, send_escape, otp_read,
-			deploy, deploy_no_board_info, baudrate);
+		do_uart(tty, fdstr, send_escape, otp_read, deploy, deploy_no_board_info, baudrate);
 
 	if (output) {
 		if (timn)
