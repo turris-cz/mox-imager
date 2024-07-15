@@ -495,6 +495,53 @@ static void do_deploy_no_board_info(struct mox_builder_data *mbd,
 	parse_otp_hash(mbd, otp_hash);
 }
 
+static void do_uart(const char *tty, const char *fdstr, int nimages,
+		    int send_escape, const char *otp_read, int deploy,
+		    int deploy_no_board_info, int baudrate)
+{
+	_Bool has_timn = image_exists(TIMN_ID);
+	int i;
+
+	info("Going to send images to the device\n");
+
+	if (fdstr)
+		setwtpfd(fdstr);
+	else
+		openwtp(tty);
+
+	if (nimages || send_escape)
+		initwtp(send_escape);
+
+	for (i = 0; i < nimages; ++i) {
+		u32 imgtype;
+		image_t *img;
+
+		imgtype = selectimage();
+		img = image_find(imgtype);
+
+		info("Sending image type %s\n", id2name(imgtype));
+		sendimage(img, i == nimages - 1, otp_read, deploy);
+
+		if (baudrate && img->id == (has_timn ? TIMN_ID : TIMH_ID))
+			try_change_baudrate(baudrate);
+	}
+
+	if (baudrate && nimages)
+		change_baudrate(115200);
+	else if (baudrate)
+		change_baudrate(baudrate);
+
+	if (otp_read)
+		uart_otp_read();
+	else if (deploy)
+		uart_deploy(deploy_no_board_info);
+
+	if (terminal_on_exit)
+		uart_terminal();
+
+	closewtp();
+}
+
 static void load_otp_read_image(const char *otp_read)
 {
 	if (!strcmp(otp_read, "testing")) {
@@ -989,48 +1036,9 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (tty || fdstr) {
-		int i;
-
-		info("Going to send images to the device\n");
-
-		if (fdstr)
-			setwtpfd(fdstr);
-		else
-			openwtp(tty);
-
-		if (nimages || send_escape)
-			initwtp(send_escape);
-
-		for (i = 0; i < nimages; ++i) {
-			u32 imgtype;
-			image_t *img;
-
-			imgtype = selectimage();
-			img = image_find(imgtype);
-
-			info("Sending image type %s\n", id2name(imgtype));
-			sendimage(img, i == nimages - 1, otp_read, deploy);
-
-			if (baudrate && img->id == (timn ? TIMN_ID : TIMH_ID))
-				try_change_baudrate(baudrate);
-		}
-
-		if (baudrate && nimages)
-			change_baudrate(115200);
-		else if (baudrate)
-			change_baudrate(baudrate);
-
-		if (otp_read)
-			uart_otp_read();
-		else if (deploy)
-			uart_deploy(deploy_no_board_info);
-
-		if (terminal_on_exit)
-			uart_terminal();
-
-		closewtp();
-	}
+	if (tty || fdstr)
+		do_uart(tty, fdstr, nimages, send_escape, otp_read,
+			deploy, deploy_no_board_info, baudrate);
 
 	if (output) {
 		if (timn)
