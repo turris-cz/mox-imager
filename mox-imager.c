@@ -394,7 +394,7 @@ static u64 mac2u64(const char *mac)
 
 #include "bundled-wtmi.c"
 
-struct mox_builder_data *find_mbd(void)
+static struct mox_builder_data *find_mbd(void)
 {
 	struct mox_builder_data needle = {
 		0x05050505, htole32(0xdeaddead), 0,
