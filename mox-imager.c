@@ -899,6 +899,9 @@ int main(int argc, char **argv)
 
 	images_given = argc - optind;
 
+	if (otp_read && images_given)
+		die("Images given when trying to read/write OTP");
+
 	for (; optind < argc; ++optind)
 		image_load(argv[optind]);
 
@@ -931,9 +934,6 @@ int main(int argc, char **argv)
 		images_given = 1;
 	} else if (otp_read || deploy) {
 		struct mox_builder_data *mbd;
-
-		if (otp_read && images_given)
-			die("Images given when trying to read/write OTP");
 
 		if (image_exists(TIMH_ID) || image_exists(TIMN_ID) || image_exists(WTMI_ID))
 			die("TIMH/TIMN/WTMI image should not be given when deploying");
