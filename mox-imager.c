@@ -302,11 +302,12 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 
 static void do_create_trusted_image(const char *keyfile, const char *output,
 				    u32 bootfs, u32 partition, int needs_obmi,
-				    int hash_obmi, int *nimages, int *nimages_timn)
+				    int hash_obmi, int *nimages)
 {
 	EC_KEY *key;
 	image_t *timh, *timn, *wtmi, *obmi;
 	u32 timh_loadaddr, timn_loadaddr;
+	int nimages_timn;
 
 	loadaddrs_for_bootfs(bootfs, &timh_loadaddr, &timn_loadaddr);
 
@@ -329,7 +330,9 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 			      partition, hash_obmi);
 
 	tim_sign(timn, key);
-	tim_parse(timn, nimages_timn, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timn, &nimages_timn, gpp_disassemble, NULL, output ? stdout : NULL);
+	if (*nimages)
+		*nimages += nimages_timn;
 
 	if (output)
 		write_image(output, timh, timn, wtmi, obmi);
@@ -616,7 +619,7 @@ int main(int argc, char **argv)
 	    genkey, dummy;
 	u32 image_bootfs = 0, partition;
 	image_t *timh = NULL, *timn = NULL;
-	int nimages, nimages_timn = 0, images_given, trusted;
+	int nimages, images_given, trusted;
 
 	tty = fdstr = output = keyfile = seed = genkey_output = serial_number =
               mac_address = board = board_version = otp_hash = otp_read = NULL;
@@ -859,7 +862,7 @@ int main(int argc, char **argv)
 		partition = 0;
 
 	if (create_trusted_image) {
-		do_create_trusted_image(keyfile, output, image_bootfs, partition, 1, hash_a53_firmware, NULL, NULL);
+		do_create_trusted_image(keyfile, output, image_bootfs, partition, 1, hash_a53_firmware, NULL);
 		exit(EXIT_SUCCESS);
 	} else if (create_untrusted_image) {
 		do_create_untrusted_image(output, image_bootfs, partition, 1, hash_a53_firmware, NULL);
@@ -906,7 +909,7 @@ int main(int argc, char **argv)
 		image_new((void *) wtmi_data, wtmi_data_size, WTMI_ID);
 
 		if (sign) {
-			do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware, &nimages, &nimages_timn);
+			do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware, &nimages);
 			timh = image_find(TIMH_ID);
 			timn = image_find(TIMN_ID);
 			trusted = 1;
@@ -945,9 +948,14 @@ int main(int argc, char **argv)
 
 		tim_parse(timh, &nimages, gpp_disassemble,
 			  &has_fast_mode, stdout);
-		if (timn)
+		if (timn) {
+			int nimages_timn;
+
 			tim_parse(timn, &nimages_timn, gpp_disassemble,
 				  &has_fast_mode, stdout);
+
+			nimages += nimages_timn;
+		}
 
 		if (baudrate && !has_fast_mode) {
 			if (trusted)
@@ -959,7 +967,6 @@ int main(int argc, char **argv)
 		if (!trusted)
 			tim_enable_hash(timh, OBMI_ID, hash_a53_firmware);
 	} else {
-		nimages_timn = 0;
 		nimages = 0;
 		trusted = 0;
 	}
@@ -983,7 +990,7 @@ int main(int argc, char **argv)
 	}
 
 	if (tty || fdstr) {
-		int i, nimages_all;
+		int i;
 
 		info("Going to send images to the device\n");
 
@@ -992,14 +999,10 @@ int main(int argc, char **argv)
 		else
 			openwtp(tty);
 
-		nimages_all = nimages;
-		if (timn)
-			nimages_all += nimages_timn;
-
-		if (nimages_all || send_escape)
+		if (nimages || send_escape)
 			initwtp(send_escape);
 
-		for (i = 0; i < nimages_all; ++i) {
+		for (i = 0; i < nimages; ++i) {
 			u32 imgtype;
 			image_t *img;
 
@@ -1007,13 +1010,13 @@ int main(int argc, char **argv)
 			img = image_find(imgtype);
 
 			info("Sending image type %s\n", id2name(imgtype));
-			sendimage(img, i == nimages_all - 1, otp_read, deploy);
+			sendimage(img, i == nimages - 1, otp_read, deploy);
 
 			if (baudrate && img->id == (timn ? TIMN_ID : TIMH_ID))
 				try_change_baudrate(baudrate);
 		}
 
-		if (baudrate && nimages_all)
+		if (baudrate && nimages)
 			change_baudrate(115200);
 		else if (baudrate)
 			change_baudrate(baudrate);
