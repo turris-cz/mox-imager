@@ -492,6 +492,40 @@ static void do_deploy_no_board_info(struct mox_builder_data *mbd,
 	parse_otp_hash(mbd, otp_hash);
 }
 
+static void create_image_from_bundled_wtmi(int sign, const char *keyfile, int hash_a53_firmware)
+{
+	image_new((void *)bundled_wtmi_data, bundled_wtmi_data_size, WTMI_ID);
+
+	if (sign)
+		do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
+	else
+		do_create_untrusted_image(NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
+}
+
+static void create_deploy_image(int deploy_no_board_info, const char *serial_number,
+				const char *mac_address, const char *board,
+				const char *board_version, const char *otp_hash,
+				int sign, const char *keyfile, int hash_a53_firmware)
+{
+	struct mox_builder_data *mbd;
+
+	if (image_exists(TIMH_ID) || image_exists(TIMN_ID) || image_exists(WTMI_ID))
+		die("TIMH/TIMN/WTMI image should not be given when deploying");
+
+	mbd = find_mbd();
+
+	if (deploy_no_board_info)
+		do_deploy_no_board_info(mbd, otp_hash);
+	else
+		do_deploy(mbd, serial_number, mac_address, board, board_version, otp_hash);
+
+	if (image_exists(OBMI_ID))
+		/* tell WTMI deploy() to not reset the SoC after deployment */
+		mbd->op = htole32(le32toh(mbd->op) | (1 << 31));
+
+	create_image_from_bundled_wtmi(sign, keyfile, hash_a53_firmware);
+}
+
 static int get_nimages_to_send(void)
 {
 	int nimages = 0;
@@ -571,6 +605,13 @@ static void load_bundled_otp_read_image(const char *otp_read)
 	} else {
 		die("Invalid value for option --otp-read. Supported values: \"testing\", \"RAD\"");
 	}
+}
+
+static void create_otp_read_image(int sign, const char *keyfile)
+{
+	find_mbd()->op = 0;
+
+	create_image_from_bundled_wtmi(sign, keyfile, 0);
 }
 
 static void set_bootfs_if_possible(u32 bootfs)
@@ -972,35 +1013,15 @@ int main(int argc, char **argv)
 	if (!otp_read && !deploy && !images_given && !terminal_on_exit)
 		die("No images given, try -h for help");
 
-	if (otp_read && strcmp(otp_read, "")) {
-		load_bundled_otp_read_image(otp_read);
-	} else if (otp_read || deploy) {
-		struct mox_builder_data *mbd;
-
-		if (image_exists(TIMH_ID) || image_exists(TIMN_ID) || image_exists(WTMI_ID))
-			die("TIMH/TIMN/WTMI image should not be given when deploying");
-
-		mbd = find_mbd();
-
-		if (deploy) {
-			if (deploy_no_board_info)
-				do_deploy_no_board_info(mbd, otp_hash);
-			else
-				do_deploy(mbd, serial_number, mac_address, board, board_version, otp_hash);
-		} else {
-			mbd->op = 0;
-		}
-
-		if (image_exists(OBMI_ID))
-			/* tell WTMI deploy() to not reset the SoC after deployment */
-			mbd->op = htole32(le32toh(mbd->op) | (1 << 31));
-
-		image_new((void *) bundled_wtmi_data, bundled_wtmi_data_size, WTMI_ID);
-
-		if (sign)
-			do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
+	if (otp_read) {
+		if (!strcmp(otp_read, ""))
+			create_otp_read_image(sign, keyfile);
 		else
-			do_create_untrusted_image(NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
+			load_bundled_otp_read_image(otp_read);
+	} else if (deploy) {
+		create_deploy_image(deploy_no_board_info, serial_number, mac_address,
+				    board, board_version, otp_hash, sign, keyfile,
+				    hash_a53_firmware);
 	} else if (images_given) {
 		image_t *timh = NULL, *timn = NULL;
 		int has_fast_mode;
