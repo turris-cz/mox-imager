@@ -35,6 +35,7 @@ static u32 last_image_sent;
 static int sent_timh_was_trusted;
 static const char *xread_timed_out_msg;
 static const char *nack_msg;
+static const char *unk_resp_sts_msg;
 
 static inline void xtcdrain(int fd)
 {
@@ -433,6 +434,7 @@ void openwtp(const char *path)
 	sent_timh_was_trusted = 0;
 	xread_timed_out_msg = NULL;
 	nack_msg = NULL;
+	unk_resp_sts_msg = NULL;
 }
 
 void closewtp(void)
@@ -710,7 +712,8 @@ static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
 	xread(((void *) resp) + 3, 2);
 
 	if (resp->status > 0x2)
-		die("Unknown response status code 0x%x", resp->status);
+		die("Unknown response status code 0x%x%s", resp->status,
+		    unk_resp_sts_msg ?: "");
 
 	xread(((void *) resp) + 5, 1);
 	if (resp->len > 0)
@@ -814,7 +817,7 @@ u32 selectimage(void)
 	getversion();
 
 	if (last_image_sent == TIMH_ID)
-		xread_timed_out_msg = nack_msg = NULL;
+		xread_timed_out_msg = nack_msg = unk_resp_sts_msg = NULL;
 
 	sendcmd(0x26, 0, 0, 0, 0, NULL, &resp);
 
@@ -909,14 +912,19 @@ void sendimage(image_t *img, int fast, const char *otp_read, int deploy)
 				"\n\nProbable reason:\n"
 				"  Deploying failed becuase the board is already deployed (EFUSEs are already burned).";
 		} else if (otp_read) {
-			if (sent_timh_was_trusted)
+			if (sent_timh_was_trusted) {
 				nack_msg = "\n\nProbable reason:\n"
 					   "  OTP reading may have failed because you specified a wrong board vendor\n"
 					   "  with the -R / --otp-read option.";
-			else
+				unk_resp_sts_msg = "\n\nProbable reason:\n"
+						   "  OTP reading may have failed because you specified a board vendor with\n"
+						   "  the -RVENDOR / --otp-read=VENDOR option, but the board is not trusted.\n"
+						   "  Try the option without specifying a vendor (just -R / --otp-read).";
+			} else {
 				xread_timed_out_msg = "\n\nProbable reason:\n"
 						      "  OTP reading may have failed because the board is trusted and you did\n"
 						      "  not specify board vendor (see the -R / --otp-read option in --help).";
+			}
 		} else {
 			if (sent_timh_was_trusted)
 				nack_msg = "\n\nProbable reason:\n"
