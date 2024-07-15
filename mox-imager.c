@@ -441,9 +441,9 @@ static void parse_otp_hash(struct mox_builder_data *mbd, const char *otp_hash)
 	}
 }
 
-static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
-		      const char *mac_address, const char *board,
-		      const char *board_version, const char *otp_hash)
+static void prepare_deploy(struct mox_builder_data *mbd, const char *serial_number,
+			   const char *mac_address, const char *board,
+			   const char *board_version, const char *otp_hash)
 {
 	u64 mac, sn;
 	u32 bv, bt;
@@ -479,8 +479,8 @@ static void do_deploy(struct mox_builder_data *mbd, const char *serial_number,
 	parse_otp_hash(mbd, otp_hash);
 }
 
-static void do_deploy_no_board_info(struct mox_builder_data *mbd,
-				    const char *otp_hash)
+static void prepare_deploy_no_board_info(struct mox_builder_data *mbd,
+					 const char *otp_hash)
 {
 	mbd->op = htole32(2);
 	mbd->serial_number_low = 0;
@@ -515,9 +515,9 @@ static void create_deploy_image(int deploy_no_board_info, const char *serial_num
 	mbd = find_mbd();
 
 	if (deploy_no_board_info)
-		do_deploy_no_board_info(mbd, otp_hash);
+		prepare_deploy_no_board_info(mbd, otp_hash);
 	else
-		do_deploy(mbd, serial_number, mac_address, board, board_version, otp_hash);
+		prepare_deploy(mbd, serial_number, mac_address, board, board_version, otp_hash);
 
 	if (image_exists(OBMI_ID))
 		/* tell WTMI deploy() to not reset the SoC after deployment */
