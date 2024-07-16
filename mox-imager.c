@@ -31,7 +31,7 @@ typedef struct {
 		   *otp_hash, *otp_read;
 	_Bool sign, hash_a53_firmware, no_a53_firmware, deploy, deploy_no_board_info,
 	      get_otp_hash, create_trusted_image, create_untrusted_image,
-	      sign_untrusted_image, send_escape, genkey;
+	      sign_untrusted_image, send_escape, genkey, gpp_disassemble;
 	int baudrate;
 	u32 image_bootfs;
 
@@ -50,7 +50,6 @@ static const args_t def_args = {
 
 static args_t args = def_args;
 
-static int gpp_disassemble;
 int terminal_on_exit = 0;
 
 struct mox_builder_data {
@@ -288,7 +287,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 	timn = timh;
 
 	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
-	tim_parse(timh, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timh, args.gpp_disassemble, NULL, output ? stdout : NULL);
 
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
@@ -301,7 +300,7 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 		tim_enable_hash(timn, OBMI_ID, hash_obmi);
 	}
 	tim_sign(timn, key);
-	tim_parse(timn, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timn, args.gpp_disassemble, NULL, output ? stdout : NULL);
 
 	if (output)
 		write_image(output, timh, timn, wtmi, obmi);
@@ -323,7 +322,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	key = load_key(keyfile);
 
 	timh = timh_create_for_trusted(key, timh_loadaddr, bootfs, partition);
-	tim_parse(timh, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timh, args.gpp_disassemble, NULL, output ? stdout : NULL);
 
 	timn = image_new(NULL, 0, TIMN_ID);
 	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
@@ -336,7 +335,7 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 			      partition, hash_obmi);
 
 	tim_sign(timn, key);
-	tim_parse(timn, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timn, args.gpp_disassemble, NULL, output ? stdout : NULL);
 
 	if (output)
 		write_image(output, timh, timn, wtmi, obmi);
@@ -360,7 +359,7 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 
 	tim_set_boot(timh, bootfs);
 	tim_rehash(timh);
-	tim_parse(timh, gpp_disassemble, NULL, output ? stdout : NULL);
+	tim_parse(timh, args.gpp_disassemble, NULL, output ? stdout : NULL);
 
 	if (output)
 		write_image(output, timh, NULL, wtmi, obmi);
@@ -917,7 +916,7 @@ int main(int argc, char **argv)
 				args.sign_untrusted_image = 1;
 			break;
 		case 'S':
-			gpp_disassemble = 1;
+			args.gpp_disassemble = 1;
 			break;
 		case 'G':
 			args.get_otp_hash = 1;
@@ -1053,9 +1052,9 @@ int main(int argc, char **argv)
 			tim_rehash(timh);
 		}
 
-		tim_parse(timh, gpp_disassemble, &has_fast_mode, stdout);
+		tim_parse(timh, args.gpp_disassemble, &has_fast_mode, stdout);
 		if (timn)
-			tim_parse(timn, gpp_disassemble, &has_fast_mode, stdout);
+			tim_parse(timn, args.gpp_disassemble, &has_fast_mode, stdout);
 
 		if (args.baudrate && !has_fast_mode) {
 			if (tim_is_trusted(timh))
