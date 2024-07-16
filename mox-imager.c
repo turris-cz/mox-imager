@@ -25,6 +25,17 @@
 #include "key.h"
 #include "images.h"
 
+typedef struct {
+	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey_output,
+		   *serial_number, *mac_address, *board, *board_version,
+		   *otp_hash, *otp_read;
+	_Bool sign, hash_a53_firmware, no_a53_firmware, deploy, deploy_no_board_info,
+	      get_otp_hash, create_trusted_image, create_untrusted_image,
+	      sign_untrusted_image, send_escape, genkey;
+	int baudrate;
+	u32 image_bootfs;
+} args_t;
+
 struct settings {
 	u32 timn_offset;
 	u32 wtmi_offset;
@@ -757,22 +768,9 @@ static const struct option long_options[] = {
 
 int main(int argc, char **argv)
 {
-	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey_output,
-		   *serial_number, *mac_address, *board, *board_version,
-		   *otp_hash, *otp_read;
-	int sign, hash_a53_firmware, no_a53_firmware, deploy,
-	    deploy_no_board_info, get_otp_hash, create_trusted_image,
-	    create_untrusted_image, sign_untrusted_image, send_escape, baudrate,
-	    genkey, dummy;
-	u32 image_bootfs = 0, partition;
-	int images_given;
-
-	tty = fdstr = output = keyfile = seed = genkey_output = serial_number =
-              mac_address = board = board_version = otp_hash = otp_read = NULL;
-	sign = hash_a53_firmware = no_a53_firmware = deploy =
-	       deploy_no_board_info = get_otp_hash = create_trusted_image =
-	       create_untrusted_image = sign_untrusted_image = send_escape =
-	       baudrate = genkey = 0;
+	int images_given, dummy;
+	args_t args = {};
+	u32 partition;
 
 	while (1) {
 		int c;
@@ -784,61 +782,61 @@ int main(int argc, char **argv)
 
 		switch (c) {
 		case 'D':
-			if (tty)
+			if (args.tty)
 				die("Device already given");
-			tty = optarg;
-			if (access(tty, R_OK | W_OK))
-				die("Don't have read/write access to device %s: %m", tty);
+			args.tty = optarg;
+			if (access(args.tty, R_OK | W_OK))
+				die("Don't have read/write access to device %s: %m", args.tty);
 			break;
 		case 'b':
-			baudrate = atoi(optarg);
-			if (baudrate > 6000000)
+			args.baudrate = atoi(optarg);
+			if (args.baudrate > 6000000)
 				die("Desired baudrate too high (maximum is 6 MBaud)");
-			if (baudrate == 115200)
-				baudrate = 0;
+			if (args.baudrate == 115200)
+				args.baudrate = 0;
 			break;
 		case 'F':
-			if (fdstr)
+			if (args.fdstr)
 				die("File descriptor already given");
-			fdstr = optarg;
+			args.fdstr = optarg;
 			break;
 		case 'E':
-			send_escape = 1;
+			args.send_escape = 1;
 			break;
 		case 'o':
-			if (output)
+			if (args.output)
 				die("Output file already given");
-			output = optarg;
+			args.output = optarg;
 			break;
 		case 'k':
-			if (keyfile)
+			if (args.keyfile)
 				die("Key file already given");
-			keyfile = optarg;
+			args.keyfile = optarg;
 			break;
 		case 'r':
-			if (seed)
+			if (args.seed)
 				die("Random seed file already given");
-			seed = optarg;
+			args.seed = optarg;
 			break;
 		case 'R':
-			if (otp_read)
+			if (args.otp_read)
 				die("Option --otp-read already given");
 			if (optarg)
-				otp_read = optarg;
+				args.otp_read = optarg;
 			else
-				otp_read = "";
+				args.otp_read = "";
 			break;
 		case 'd':
-			if (deploy)
+			if (args.deploy)
 				die("Option --deploy already given");
 
 			if (optarg) {
-				deploy_no_board_info = !strcmp(optarg, "no-board-info");
-				if (!deploy_no_board_info)
+				args.deploy_no_board_info = !strcmp(optarg, "no-board-info");
+				if (!args.deploy_no_board_info)
 					die("value %s of option '--deploy' unrecognized", optarg);
 			}
 
-			deploy = 1;
+			args.deploy = 1;
 			break;
 		case 't':
 			/*
@@ -870,68 +868,68 @@ int main(int argc, char **argv)
 			terminal_on_exit = 1;
 			break;
 		case 'N':
-			if (serial_number)
+			if (args.serial_number)
 				die("Serial number already given");
-			serial_number = optarg;
+			args.serial_number = optarg;
 			break;
 		case 'M':
-			if (mac_address)
+			if (args.mac_address)
 				die("Mac address already given");
-			mac_address = optarg;
+			args.mac_address = optarg;
 			break;
 		case 'Z':
-			if (board)
+			if (args.board)
 				die("Board already given");
-			board = optarg;
+			args.board = optarg;
 			break;
 		case 'B':
-			if (board_version)
+			if (args.board_version)
 				die("Board version already given");
-			board_version = optarg;
+			args.board_version = optarg;
 			break;
 		case 'H':
-			if (otp_hash)
+			if (args.otp_hash)
 				die("OTP hash already given");
-			otp_hash = optarg;
+			args.otp_hash = optarg;
 			break;
 		case 'g':
-			if (genkey)
+			if (args.genkey)
 				die("File to which generate key already given");
-			genkey = 1;
-			genkey_output = optarg;
+			args.genkey = 1;
+			args.genkey_output = optarg;
 			break;
 		case 's':
-			sign = 1;
+			args.sign = 1;
 			break;
 		case 'c':
 		case 'C':
 		case 'i':
 			if (!strcmp(optarg, "UART"))
-				image_bootfs = BOOTFS_UART;
+				args.image_bootfs = BOOTFS_UART;
 			else if (!strcmp(optarg, "SPI"))
-				image_bootfs = BOOTFS_SPINOR;
+				args.image_bootfs = BOOTFS_SPINOR;
 			else if (!strcmp(optarg, "EMMC"))
-				image_bootfs = BOOTFS_EMMC;
+				args.image_bootfs = BOOTFS_EMMC;
 			else
 				die("Invalid argument for parameter --create-[un]trusted-image/--sign-untrusted-image");
 			if (c == 'c')
-				create_trusted_image = 1;
+				args.create_trusted_image = 1;
 			else if (c == 'C')
-				create_untrusted_image = 1;
+				args.create_untrusted_image = 1;
 			else
-				sign_untrusted_image = 1;
+				args.sign_untrusted_image = 1;
 			break;
 		case 'S':
 			gpp_disassemble = 1;
 			break;
 		case 'G':
-			get_otp_hash = 1;
+			args.get_otp_hash = 1;
 			break;
 		case 'u':
-			hash_a53_firmware = 1;
+			args.hash_a53_firmware = 1;
 			break;
 		case 'n':
-			no_a53_firmware = 1;
+			args.no_a53_firmware = 1;
 			break;
 		case timn_offset_opt:
 			settings.timn_offset = parse_u32_opt("timn-offset", optarg, 0x100, 0x4000);
@@ -955,87 +953,87 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (create_trusted_image && (!keyfile || !output))
+	if (args.create_trusted_image && (!args.keyfile || !args.output))
 		die("Options --key and --output must be given when creating trusted image");
 
-	if (create_untrusted_image && !output)
+	if (args.create_untrusted_image && !args.output)
 		die("Option --output must be given when creating untrusted image");
 
-	if (sign_untrusted_image && (!keyfile || !output))
+	if (args.sign_untrusted_image && (!args.keyfile || !args.output))
 		die("Options --key and --output must be given when signing untrusted image");
 
-	if ((tty || fdstr) && output)
+	if ((args.tty || args.fdstr) && args.output)
 		die("Options --device and --output cannot be used together");
 
-	if (sign && !keyfile)
+	if (args.sign && !args.keyfile)
 		die("Option --key must be given when signing");
 
-	if ((otp_read || deploy) && !tty && !fdstr)
+	if ((args.otp_read || args.deploy) && !args.tty && !args.fdstr)
 		die("Option --device must be specified when reading/writing OTP");
 
-	if (otp_read && deploy)
+	if (args.otp_read && args.deploy)
 		die("Options to read OTP and deploy cannot be used together");
 
-	if (deploy) {
-		if (deploy_no_board_info) {
-			if (!otp_hash)
+	if (args.deploy) {
+		if (args.deploy_no_board_info) {
+			if (!args.otp_hash)
 				die("Option --otp-hash must be given when deploying device with no board information");
-			if (serial_number || mac_address || board || board_version)
+			if (args.serial_number || args.mac_address || args.board || args.board_version)
 				die("Options --serial-number, --mac-address, --board and --board-version must not be given when deploying device with no board information");
 		} else {
-			if (!serial_number || !mac_address || !board || !board_version || !otp_hash)
+			if (!args.serial_number || !args.mac_address || !args.board || !args.board_version || !args.otp_hash)
 				die("Options --serial-number, --mac-address, --board, --board-version and --otp-hash must be given when deploying device");
 		}
 	}
 
-	if (genkey) {
+	if (args.genkey) {
 		if (optind < argc)
 			die("Images must not be given when generating key");
 
-		generate_key(genkey_output, seed);
+		generate_key(args.genkey_output, args.seed);
 		exit(EXIT_SUCCESS);
 	}
 
 	images_given = argc - optind;
 
-	if (otp_read && images_given)
+	if (args.otp_read && images_given)
 		die("Images given when trying to read OTP");
 
 	for (; optind < argc; ++optind)
 		image_load(argv[optind]);
 
-	if (image_bootfs == BOOTFS_EMMC)
+	if (args.image_bootfs == BOOTFS_EMMC)
 		/* Boot partition on eMMC is partition 2 */
 		partition = 2;
 	else
 		partition = 0;
 
-	if (create_trusted_image) {
-		do_create_trusted_image(keyfile, output, image_bootfs, partition, 1, hash_a53_firmware);
+	if (args.create_trusted_image) {
+		do_create_trusted_image(args.keyfile, args.output, args.image_bootfs, partition, 1, args.hash_a53_firmware);
 		exit(EXIT_SUCCESS);
-	} else if (create_untrusted_image) {
-		do_create_untrusted_image(output, image_bootfs, partition, 1, hash_a53_firmware);
+	} else if (args.create_untrusted_image) {
+		do_create_untrusted_image(args.output, args.image_bootfs, partition, 1, args.hash_a53_firmware);
 		exit(EXIT_SUCCESS);
-	} else if (sign_untrusted_image) {
-		do_sign_untrusted_image(keyfile, output, image_bootfs, partition, hash_a53_firmware);
+	} else if (args.sign_untrusted_image) {
+		do_sign_untrusted_image(args.keyfile, args.output, args.image_bootfs, partition, args.hash_a53_firmware);
 		exit(EXIT_SUCCESS);
 	}
 
-	if (!otp_read && !deploy && !images_given && !terminal_on_exit)
+	if (!args.otp_read && !args.deploy && !images_given && !terminal_on_exit)
 		die("No images given, try -h for help");
 
-	if (otp_read) {
-		do_otp_read(otp_read, sign, keyfile, tty, fdstr, send_escape, baudrate);
+	if (args.otp_read) {
+		do_otp_read(args.otp_read, args.sign, args.keyfile, args.tty, args.fdstr, args.send_escape, args.baudrate);
 		exit(EXIT_SUCCESS);
-	} else if (deploy) {
-		create_deploy_image(deploy_no_board_info, serial_number, mac_address,
-				    board, board_version, otp_hash, sign, keyfile,
-				    hash_a53_firmware);
+	} else if (args.deploy) {
+		create_deploy_image(args.deploy_no_board_info, args.serial_number, args.mac_address,
+				    args.board, args.board_version, args.otp_hash, args.sign, args.keyfile,
+				    args.hash_a53_firmware);
 	} else if (images_given) {
 		image_t *timh = NULL, *timn = NULL;
 		int has_fast_mode;
 
-		if (get_otp_hash) {
+		if (args.get_otp_hash) {
 			u32 hash[8];
 			int i;
 
@@ -1051,7 +1049,7 @@ int main(int argc, char **argv)
 		if (tim_imap_pkg_addr(timh, name2id("CSKT")) != -1U)
 			timn = image_find(TIMN_ID);
 
-		if (no_a53_firmware) {
+		if (args.no_a53_firmware) {
 			if (tim_is_trusted(timh))
 				die("Cannot modify trusted image!");
 			tim_remove_image(timh, name2id("OBMI"));
@@ -1062,7 +1060,7 @@ int main(int argc, char **argv)
 		if (timn)
 			tim_parse(timn, gpp_disassemble, &has_fast_mode, stdout);
 
-		if (baudrate && !has_fast_mode) {
+		if (args.baudrate && !has_fast_mode) {
 			if (tim_is_trusted(timh))
 				die("Fast upload mode not supported by this image\n"
 				    "and cannot inject the code into trusted image!");
@@ -1070,26 +1068,26 @@ int main(int argc, char **argv)
 		}
 
 		if (!tim_is_trusted(timh))
-			tim_enable_hash(timh, OBMI_ID, hash_a53_firmware);
+			tim_enable_hash(timh, OBMI_ID, args.hash_a53_firmware);
 	}
 
 	if (images_given) {
-		if (tty || fdstr)
+		if (args.tty || args.fdstr)
 			set_bootfs_if_possible(BOOTFS_UART);
-		else if (output)
+		else if (args.output)
 			set_bootfs_if_possible(BOOTFS_SPINOR);
 
-		ensure_image_rehash_or_sign_if_possible(sign, keyfile);
+		ensure_image_rehash_or_sign_if_possible(args.sign, args.keyfile);
 	}
 
-	if (tty || fdstr)
-		do_uart(tty, fdstr, send_escape, otp_read, deploy, deploy_no_board_info, baudrate);
+	if (args.tty || args.fdstr)
+		do_uart(args.tty, args.fdstr, args.send_escape, args.otp_read, args.deploy, args.deploy_no_board_info, args.baudrate);
 
-	if (output) {
+	if (args.output) {
 		if (image_exists(TIMN_ID))
 			die("TIMH + TIMN image saving not supported!");
-		save_flash_image(image_find(TIMH_ID), output);
-		info("Saved to image %s\n\n", output);
+		save_flash_image(image_find(TIMH_ID), args.output);
+		info("Saved to image %s\n\n", args.output);
 	}
 
 	exit(EXIT_SUCCESS);
