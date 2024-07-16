@@ -30,7 +30,7 @@ static int vffprintf(unsigned int attr, FILE *fp, const char * restrict fmt, va_
 	is_tty = fd >= 0 ? isatty(fd) : 0;
 
 	if (is_tty && attr)
-		fprintf(fp, "\033[%d%sm", 30 + (attr & 7), (attr & 8) ? ";1" : "");
+		fprintf(fp, "\033[0m\033[%d%sm", 30 + (attr & 7), (attr & 8) ? ";1" : "");
 
 	errno = saved_errno;
 
