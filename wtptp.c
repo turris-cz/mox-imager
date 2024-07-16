@@ -845,7 +845,7 @@ u32 selectimage(void)
 	return *(u32 *) resp.data;
 }
 
-void sendimage(image_t *img, int fast, const char *otp_read, int deploy)
+void sendimage(image_t *img, int fast, const args_t *args)
 {
 	static int seq = 1;
 	resp_t resp;
@@ -925,11 +925,11 @@ void sendimage(image_t *img, int fast, const char *otp_read, int deploy)
 	if (img->id == TIMH_ID) {
 		sent_timh_was_trusted = tim_is_trusted(img);
 
-		if (deploy) {
+		if (args->deploy) {
 			nack_msg = xread_timed_out_msg =
 				"\n\nProbable reason:\n"
 				"  Deploying failed becuase the board is already deployed (EFUSEs are already burned).";
-		} else if (otp_read) {
+		} else if (args->otp_read) {
 			if (sent_timh_was_trusted) {
 				nack_msg = "\n\nProbable reason:\n"
 					   "  OTP reading may have failed because you specified a wrong board vendor\n"

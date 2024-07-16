@@ -432,33 +432,31 @@ static void parse_otp_hash(struct mox_builder_data *mbd, const char *otp_hash)
 	}
 }
 
-static void prepare_deploy(struct mox_builder_data *mbd, const char *serial_number,
-			   const char *mac_address, const char *board,
-			   const char *board_version, const char *otp_hash)
+static void prepare_deploy(struct mox_builder_data *mbd, const args_t *args)
 {
 	u64 mac, sn;
 	u32 bv, bt;
 	char *end;
 
-	sn = strtoull(serial_number, &end, 16);
+	sn = strtoull(args->serial_number, &end, 16);
 	if (*end)
-		die("Invalid serial number \"%s\"", serial_number);
+		die("Invalid serial number \"%s\"", args->serial_number);
 
-	if (!strcmp(board, "MOX"))
+	if (!strcmp(args->board, "MOX"))
 		bt = 0;
-	else if (!strcmp(board, "RIPE"))
+	else if (!strcmp(args->board, "RIPE"))
 		bt = 2;
 	else
-		die("Invalid board \"%s\"", board);
+		die("Invalid board \"%s\"", args->board);
 
-	bv = strtoul(board_version, &end, 10);
+	bv = strtoul(args->board_version, &end, 10);
 	if (*end || bv > 0x3f)
-		die("Invalid board version \"%s\"", board_version);
+		die("Invalid board version \"%s\"", args->board_version);
 
-	mac = mac2u64(mac_address);
+	mac = mac2u64(args->mac_address);
 
 	info("Deploying device SN %016llX, board version %u, MAC %s\n",
-	     sn, bv, mac_address);
+	     sn, bv, args->mac_address);
 
 	mbd->op = htole32(1);
 	mbd->serial_number_low = htole32(sn & 0xffffffff);
@@ -467,11 +465,11 @@ static void prepare_deploy(struct mox_builder_data *mbd, const char *serial_numb
 	mbd->mac_addr_high = htole32(mac >> 32);
 	mbd->board_version = htole32((bt << 6) | bv);
 
-	parse_otp_hash(mbd, otp_hash);
+	parse_otp_hash(mbd, args->otp_hash);
 }
 
 static void prepare_deploy_no_board_info(struct mox_builder_data *mbd,
-					 const char *otp_hash)
+					 const args_t *args)
 {
 	mbd->op = htole32(2);
 	mbd->serial_number_low = 0;
@@ -480,23 +478,20 @@ static void prepare_deploy_no_board_info(struct mox_builder_data *mbd,
 	mbd->mac_addr_high = 0;
 	mbd->board_version = 0;
 
-	parse_otp_hash(mbd, otp_hash);
+	parse_otp_hash(mbd, args->otp_hash);
 }
 
-static void create_image_from_bundled_wtmi(int sign, const char *keyfile, int hash_a53_firmware)
+static void create_image_from_bundled_wtmi(const args_t *args)
 {
 	image_new((void *)bundled_wtmi_data, bundled_wtmi_data_size, WTMI_ID);
 
-	if (sign)
-		do_create_trusted_image(keyfile, NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
+	if (args->sign)
+		do_create_trusted_image(args->keyfile, NULL, BOOTFS_UART, 0, 0, args->hash_a53_firmware);
 	else
-		do_create_untrusted_image(NULL, BOOTFS_UART, 0, 0, hash_a53_firmware);
+		do_create_untrusted_image(NULL, BOOTFS_UART, 0, 0, args->hash_a53_firmware);
 }
 
-static void create_deploy_image(int deploy_no_board_info, const char *serial_number,
-				const char *mac_address, const char *board,
-				const char *board_version, const char *otp_hash,
-				int sign, const char *keyfile, int hash_a53_firmware)
+static void create_deploy_image(const args_t *args)
 {
 	struct mox_builder_data *mbd;
 
@@ -505,16 +500,16 @@ static void create_deploy_image(int deploy_no_board_info, const char *serial_num
 
 	mbd = find_mbd();
 
-	if (deploy_no_board_info)
-		prepare_deploy_no_board_info(mbd, otp_hash);
+	if (args->deploy_no_board_info)
+		prepare_deploy_no_board_info(mbd, args);
 	else
-		prepare_deploy(mbd, serial_number, mac_address, board, board_version, otp_hash);
+		prepare_deploy(mbd, args);
 
 	if (image_exists(OBMI_ID))
 		/* tell WTMI deploy() to not reset the SoC after deployment */
 		mbd->op = htole32(le32toh(mbd->op) | (1 << 31));
 
-	create_image_from_bundled_wtmi(sign, keyfile, hash_a53_firmware);
+	create_image_from_bundled_wtmi(args);
 }
 
 static int get_nimages_to_send(void)
@@ -535,9 +530,7 @@ static int get_nimages_to_send(void)
 	return nimages;
 }
 
-static void do_uart(const char *tty, const char *fdstr, int send_escape,
-		    const char *otp_read, int deploy, int deploy_no_board_info,
-		    int baudrate)
+static void do_uart(const args_t *args)
 {
 	_Bool has_timn = image_exists(TIMN_ID);
 	int nimages, i;
@@ -547,13 +540,13 @@ static void do_uart(const char *tty, const char *fdstr, int send_escape,
 	if (nimages)
 		info("Going to send images to the device\n");
 
-	if (fdstr)
-		setwtpfd(fdstr);
+	if (args->fdstr)
+		setwtpfd(args->fdstr);
 	else
-		openwtp(tty);
+		openwtp(args->tty);
 
-	if (nimages || send_escape)
-		initwtp(send_escape);
+	if (nimages || args->send_escape)
+		initwtp(args->send_escape);
 
 	for (i = 0; i < nimages; ++i) {
 		u32 imgtype;
@@ -563,23 +556,23 @@ static void do_uart(const char *tty, const char *fdstr, int send_escape,
 		img = image_find(imgtype);
 
 		info("Sending image type %s\n", id2name(imgtype));
-		sendimage(img, i == nimages - 1, otp_read, deploy);
+		sendimage(img, i == nimages - 1, args);
 
-		if (baudrate && img->id == (has_timn ? TIMN_ID : TIMH_ID))
-			try_change_baudrate(baudrate);
+		if (args->baudrate && img->id == (has_timn ? TIMN_ID : TIMH_ID))
+			try_change_baudrate(args->baudrate);
 	}
 
-	if (baudrate && nimages)
+	if (args->baudrate && nimages)
 		change_baudrate(115200);
-	else if (baudrate)
-		change_baudrate(baudrate);
+	else if (args->baudrate)
+		change_baudrate(args->baudrate);
 
-	if (otp_read)
+	if (args->otp_read)
 		uart_otp_read();
-	else if (deploy)
-		uart_deploy(deploy_no_board_info);
+	else if (args->deploy)
+		uart_deploy(args->deploy_no_board_info);
 
-	if (args.terminal_on_exit)
+	if (args->terminal_on_exit)
 		uart_terminal();
 
 	closewtp();
@@ -598,22 +591,21 @@ static void load_bundled_otp_read_image(const char *otp_read)
 	}
 }
 
-static void create_otp_read_image(int sign, const char *keyfile)
+static void create_otp_read_image(const args_t *args)
 {
 	find_mbd()->op = 0;
 
-	create_image_from_bundled_wtmi(sign, keyfile, 0);
+	create_image_from_bundled_wtmi(args);
 }
 
-static void do_otp_read(const char *otp_read, int sign, const char *keyfile,
-			const char *tty, const char *fdstr, int send_escape, int baudrate)
+static void do_otp_read(const args_t *args)
 {
-	if (!strcmp(otp_read, ""))
-		create_otp_read_image(sign, keyfile);
+	if (!strcmp(args->otp_read, ""))
+		create_otp_read_image(args);
 	else
-		load_bundled_otp_read_image(otp_read);
+		load_bundled_otp_read_image(args->otp_read);
 
-	do_uart(tty, fdstr, send_escape, otp_read, 0, 0, baudrate);
+	do_uart(args);
 }
 
 static void set_bootfs_if_possible(u32 bootfs)
@@ -1002,12 +994,10 @@ int main(int argc, char **argv)
 		die("No images given, try -h for help");
 
 	if (args.otp_read) {
-		do_otp_read(args.otp_read, args.sign, args.keyfile, args.tty, args.fdstr, args.send_escape, args.baudrate);
+		do_otp_read(&args);
 		exit(EXIT_SUCCESS);
 	} else if (args.deploy) {
-		create_deploy_image(args.deploy_no_board_info, args.serial_number, args.mac_address,
-				    args.board, args.board_version, args.otp_hash, args.sign, args.keyfile,
-				    args.hash_a53_firmware);
+		create_deploy_image(&args);
 	} else if (images_given) {
 		image_t *timh = NULL, *timn = NULL;
 		int has_fast_mode;
@@ -1060,7 +1050,7 @@ int main(int argc, char **argv)
 	}
 
 	if (args.tty || args.fdstr)
-		do_uart(args.tty, args.fdstr, args.send_escape, args.otp_read, args.deploy, args.deploy_no_board_info, args.baudrate);
+		do_uart(&args);
 
 	if (args.output) {
 		if (image_exists(TIMN_ID))

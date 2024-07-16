@@ -8,6 +8,7 @@
 
 #include "utils.h"
 #include "images.h"
+#include "mox-imager.h"
 
 typedef struct {
 	u8 cmd;
@@ -26,7 +27,7 @@ extern void closewtp(void);
 extern void change_baudrate(unsigned int baudrate);
 extern void try_change_baudrate(unsigned int baudrate);
 extern u32 selectimage(void);
-extern void sendimage(image_t *img, int fast, const char *otp_read, int deploy);
+extern void sendimage(image_t *img, int fast, const args_t *args);
 extern void uart_otp_read(void);
 extern void uart_deploy(int no_board_info);
 extern void uart_terminal(void);
