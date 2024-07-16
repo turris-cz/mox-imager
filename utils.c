@@ -32,8 +32,10 @@ static int vffprintf(unsigned int attr, FILE *fp, const char * restrict fmt, va_
 
 	ret = vfprintf(fp, fmt, ap);
 
-	if (is_tty && attr)
+	if (is_tty && attr) {
 		fputs("\033[0m", fp);
+		fflush(fp);
+	}
 
 	return ret;
 }
