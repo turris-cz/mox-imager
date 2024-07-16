@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/random.h>
 #include <time.h>
+#include <setjmp.h>
 
 #include "mox-imager.h"
 #include "wtptp.h"
@@ -55,19 +56,15 @@ __attribute__((__format__(printf, 1, 2))) void notice(const char * restrict fmt,
 	va_end(ap);
 }
 
-__attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt, ...)
+static __attribute__((__noreturn__)) void vdie(const char *fmt, va_list ap)
 {
-	va_list ap;
-
 #ifndef GPP_COMPILER
 	int saved_errno = errno;
 	closewtp();
 	errno = saved_errno;
 #endif
 
-	va_start(ap, fmt);
 	vffprintf(8 | 1, stderr, fmt, ap);
-	va_end(ap);
 
 	fprintf(stderr, "\n\n");
 
@@ -79,6 +76,47 @@ __attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt
 #endif
 
 	exit(EXIT_FAILURE);
+}
+
+__attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vdie(fmt, ap);
+	va_end(ap);
+}
+
+static jmp_buf *exception_buf;
+
+__attribute__((__noreturn__, __format__(printf, 2, 3))) void throw_or_die(_Bool do_throw, const char *fmt, ...)
+{
+	va_list ap;
+
+	if (do_throw && exception_buf)
+		longjmp(*exception_buf, 1);
+
+	va_start(ap, fmt);
+	vdie(fmt, ap);
+	va_end(ap);
+}
+
+_Bool try_catch(void (*cb)(void *), void *arg)
+{
+	jmp_buf buf;
+	int res;
+
+	exception_buf = &buf;
+	res = setjmp(buf);
+	if (res) {
+		exception_buf = NULL;
+		return 1;
+	}
+
+	cb(arg);
+	exception_buf = NULL;
+
+	return 0;
 }
 
 double now(void)

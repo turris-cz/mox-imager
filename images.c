@@ -87,6 +87,21 @@ fail:
 	die("Failed hashing (%s)", hash2name(alg));
 }
 
+void image_delete_all(void)
+{
+	for (int i = 0; i < 32; ++i) {
+		if (!images[i].id)
+			continue;
+
+		if (images[i].id == TIMH_ID || images[i].id == TIMN_ID)
+			free(images[i].data);
+
+		images[i].id = 0;
+		images[i].data = NULL;
+		images[i].size = 0;
+	}
+}
+
 image_t *image_new(void *data, u32 size, u32 id)
 {
 	int i;

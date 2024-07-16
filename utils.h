@@ -10,6 +10,12 @@
 #include <stdio.h>
 #include <endian.h>
 
+#define ARRAY_SIZE(__x) (sizeof((__x)) / sizeof((__x)[0]))
+#define for_each_const(__m, __a)			\
+	for (const typeof((__a)[0]) *(__m) = &(__a)[0];	\
+	     (__m) < &(__a)[ARRAY_SIZE((__a))];		\
+	     ++(__m))
+
 typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
@@ -18,6 +24,10 @@ typedef unsigned long long u64;
 extern __attribute__((__format__(printf, 1, 2))) void info(const char * restrict fmt, ...);
 extern __attribute__((__format__(printf, 1, 2))) void notice(const char * restrict fmt, ...);
 extern __attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt, ...);
+
+extern _Bool try_catch(void (*cb)(void *), void *arg);
+extern __attribute__((__noreturn__, __format__(printf, 2, 3))) void throw_or_die(_Bool do_throw, const char *fmt, ...);
+
 extern double now(void);
 extern void *xmalloc(size_t sz);
 extern void *xrealloc(void *ptr, size_t sz);

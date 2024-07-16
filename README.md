@@ -9,6 +9,7 @@ Features over Marvell's original `WtpDownloader`:
 Other features:
 * create ECDSA signed images (Turris MOX boards are locked to only boot signed firmware)
 * burning board information to OTP (MAC address, serial number, signing key) - currently implemented for Turris MOX
+* read eFuse OTP memory
 
 ## Usage
 
@@ -62,6 +63,12 @@ mox-imager -D /dev/ttyUSB0 -b 6000000 -t .../flash-image.bin
 
 ```
 mox-imager -D /dev/ttyUSB0 -t
+```
+
+### Read device eFuse OTP memory
+
+```
+mox-imager -D /dev/ttyUSB0 -E -Rauto
 ```
 
 ### Print image info

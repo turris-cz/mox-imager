@@ -86,8 +86,9 @@ static void xread(void *buf, size_t size)
 		pfd.revents = 0;
 		res = poll(&pfd, 1, 2 * 1000);
 		if (res == 0)
-			die("Timed out while waiting for response!%s",
-			    xread_timed_out_msg ?: "");
+			throw_or_die(xread_timed_out_msg,
+				     "Timed out while waiting for response!%s",
+				     xread_timed_out_msg ?: "");
 		else if (res < 0)
 			die("Cannot poll: %m");
 
@@ -713,8 +714,8 @@ static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
 	xread(((void *) resp) + 3, 2);
 
 	if (resp->status > 0x2)
-		die("Unknown response status code 0x%x%s", resp->status,
-		    unk_resp_sts_msg ?: "");
+		throw_or_die(unk_resp_sts_msg, "Unknown response status code 0x%x%s",
+			     resp->status, unk_resp_sts_msg ?: "");
 
 	xread(((void *) resp) + 5, 1);
 	if (resp->len > 0)
@@ -765,7 +766,7 @@ static void checkresp(resp_t *resp)
 	if (resp->status == 0x2)
 		die("Sequence error on command %02x", resp->cmd);
 	else if (resp->status == 0x1)
-		die("NACK on command %02x%s", resp->cmd, nack_msg ?: "");
+		throw_or_die(nack_msg, "NACK on command %02x%s", resp->cmd, nack_msg ?: "");
 }
 
 static void sendcmd(u8 cmd, u8 seq, u8 cid, u8 flags, u32 len, const void *data,

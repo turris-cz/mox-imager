@@ -587,7 +587,7 @@ static void load_bundled_otp_read_image(const char *otp_read)
 #include "bundled-read-otp-rad.c"
 		image_load_bundled(bundled_read_otp_data, bundled_read_otp_data_size);
 	} else {
-		die("Invalid value for option --otp-read. Supported values: \"testing\", \"RAD\"");
+		die("Invalid value for option --otp-read. Supported values: \"testing\", \"RAD\" and \"auto\"");
 	}
 }
 
@@ -598,14 +598,54 @@ static void create_otp_read_image(const args_t *args)
 	create_image_from_bundled_wtmi(args);
 }
 
-static void do_otp_read(const args_t *args)
+static void _do_otp_read(void *arg)
 {
+	const args_t *args = arg;
+
 	if (!strcmp(args->otp_read, ""))
 		create_otp_read_image(args);
 	else
 		load_bundled_otp_read_image(args->otp_read);
 
 	do_uart(args);
+}
+
+static __attribute__((__noreturn__)) void do_otp_read(const args_t *args)
+{
+	static const char * const vendors[3] = { "", "RAD", "testing" };
+	args_t new_args;
+
+	/* if VENDIR in --otp-read=VENDOR is not "auto", just call it */
+	if (strcmp(args->otp_read, "auto")) {
+		_do_otp_read((void *)args);
+		exit(EXIT_SUCCESS);
+	}
+
+	/* otherwise try all vendors */
+	new_args = *args;
+
+	for_each_const(vendor, vendors) {
+		char fw[64];
+
+		if (!strcmp(*vendor, ""))
+			strcpy(fw, "untrusted firmware");
+		else
+			snprintf(fw, sizeof(fw), "firmware signed by %s vendor key", *vendor);
+
+		info("Trying to read OTP by sending %s\n", fw);
+
+		new_args.otp_read = *vendor;
+
+		if (try_catch(_do_otp_read, &new_args)) {
+			info("Failed reading OTP with %s\n\n", fw);
+			image_delete_all();
+			continue;
+		}
+
+		exit(EXIT_SUCCESS);
+	}
+
+	die("Could not read OTP, tried firmware for all possible board vendors");
 }
 
 static void set_bootfs_if_possible(u32 bootfs)
@@ -670,8 +710,8 @@ static void help(void)
 		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
 		"  -k, --key=KEY                               read ECDSA-521 private key from file KEY\n"
 		"  -r, --random-seed=FILE                      read random seed from file (for deterministic private key generation)\n\n"
-		"  -R, --otp-read[=VENDOR]                     read OTP memory (use the optional option VENDOR to read OTP on trusted\n"
-		"                                              boards signed with VENDOR's key)\n\n"
+		"  -R, --otp-read[=VENDOR|auto]                read OTP memory (use the optional option VENDOR to read OTP on trusted\n"
+		"                                              boards signed with VENDOR's key, or \"auto\" to try all possibilities)\n\n"
 		"  -d, --deploy[=no-board-info]                deploy device (write OTP memory).\n"
 		"                                              Serial number, MAC address, board type and board version\n"
 		"                                              must not be given if the 'no-board-info' parameter is given.\n"
@@ -995,7 +1035,6 @@ int main(int argc, char **argv)
 
 	if (args.otp_read) {
 		do_otp_read(&args);
-		exit(EXIT_SUCCESS);
 	} else if (args.deploy) {
 		create_deploy_image(&args);
 	} else if (images_given) {
