@@ -34,23 +34,21 @@ typedef struct {
 	      sign_untrusted_image, send_escape, genkey;
 	int baudrate;
 	u32 image_bootfs;
-} args_t;
 
-struct settings {
 	u32 timn_offset;
 	u32 wtmi_offset;
 	u32 obmi_offset;
 	u32 obmi_max_size;
-};
+} args_t;
 
-static const struct settings def_settings = {
+static const args_t def_args = {
 	.timn_offset = 0x1000,
 	.wtmi_offset = 0x4000,
 	.obmi_offset = 0x20000,
 	.obmi_max_size = 0x160000,
 };
 
-static struct settings settings = def_settings;
+static args_t args = def_args;
 
 static int gpp_disassemble;
 int terminal_on_exit = 0;
@@ -191,7 +189,7 @@ static image_t *obmi_for_creation(int needs_obmi, int hash_obmi)
 		obmi = image_find(OBMI_ID);
 	} else if (needs_obmi) {
 		obmi = image_new(NULL, 0, OBMI_ID);
-		obmi->size = settings.obmi_max_size;
+		obmi->size = args.obmi_max_size;
 	} else {
 		obmi = NULL;
 	}
@@ -221,7 +219,7 @@ static image_t *timh_create_for_trusted(EC_KEY *key, u32 loadaddr,
 	timh = image_new(NULL, 0, TIMH_ID);
 	tim_minimal_image(timh, 1, TIMH_ID, 0);
 	tim_set_boot(timh, bootfs);
-	tim_imap_pkg_addr_set(timh, name2id("CSKT"), settings.timn_offset, partition);
+	tim_imap_pkg_addr_set(timh, name2id("CSKT"), args.timn_offset, partition);
 	tim_image_set_loadaddr(timh, TIMH_ID, loadaddr);
 	tim_add_key(timh, name2id("CSK0"), key);
 	tim_sign(timh, key);
@@ -237,14 +235,14 @@ static void write_image(const char *output,
 	u32 size;
 	int fd;
 
-	size = settings.obmi_offset;
+	size = args.obmi_offset;
 	buf = xmalloc(size);
 	memset(buf, 0, size);
 
 	memcpy(buf, timh->data, timh->size);
 	if (timn)
-		memcpy(buf + settings.timn_offset, timn->data, timn->size);
-	memcpy(buf + settings.wtmi_offset, wtmi->data, wtmi->size);
+		memcpy(buf + args.timn_offset, timn->data, timn->size);
+	memcpy(buf + args.wtmi_offset, wtmi->data, wtmi->size);
 
 	fd = open_and_truncate(output, 0);
 
@@ -294,12 +292,12 @@ static void do_sign_untrusted_image(const char *keyfile, const char *output,
 
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
-	tim_image_set_flashaddr(timn, TIMN_ID, settings.timn_offset, partition);
+	tim_image_set_flashaddr(timn, TIMN_ID, args.timn_offset, partition);
 	tim_enable_hash(timn, TIMN_ID, 1);
-	tim_image_set_flashaddr(timn, WTMI_ID, settings.wtmi_offset, partition);
+	tim_image_set_flashaddr(timn, WTMI_ID, args.wtmi_offset, partition);
 	tim_enable_hash(timn, WTMI_ID, 1);
 	if (obmi) {
-		tim_image_set_flashaddr(timn, OBMI_ID, settings.obmi_offset, partition);
+		tim_image_set_flashaddr(timn, OBMI_ID, args.obmi_offset, partition);
 		tim_enable_hash(timn, OBMI_ID, hash_obmi);
 	}
 	tim_sign(timn, key);
@@ -331,10 +329,10 @@ static void do_create_trusted_image(const char *keyfile, const char *output,
 	tim_minimal_image(timn, 1, TIMN_ID, bootfs == BOOTFS_UART);
 	tim_set_boot(timn, bootfs);
 	tim_image_set_loadaddr(timn, TIMN_ID, timn_loadaddr);
-	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, settings.wtmi_offset, partition, 1);
+	tim_add_image(timn, wtmi, TIMN_ID, 0x1fff0000, args.wtmi_offset, partition, 1);
 
 	if (obmi)
-		tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, settings.obmi_offset,
+		tim_add_image(timn, obmi, name2id("WTMI"), 0x64100000, args.obmi_offset,
 			      partition, hash_obmi);
 
 	tim_sign(timn, key);
@@ -354,10 +352,10 @@ static void do_create_untrusted_image(const char *output, u32 bootfs,
 
 	timh = image_new(NULL, 0, TIMH_ID);
 	tim_minimal_image(timh, 0, TIMH_ID, bootfs == BOOTFS_UART);
-	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, settings.wtmi_offset, partition, 1);
+	tim_add_image(timh, wtmi, TIMH_ID, 0x1fff0000, args.wtmi_offset, partition, 1);
 
 	if (obmi)
-		tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, settings.obmi_offset,
+		tim_add_image(timh, obmi, name2id("WTMI"), 0x64100000, args.obmi_offset,
 			      partition, hash_obmi);
 
 	tim_set_boot(timh, bootfs);
@@ -724,7 +722,7 @@ static void help(void)
 		"      --obmi-offset=OFFSET                    offset of OBMI image / A53 firmware (default: %#x)\n"
 		"      --obmi-max-size=SIZE                    maximum size of OBMI image / A53 firmware (default: %#x)\n"
 		"  -h, --help                                  show this help and exit\n"
-		"\n", def_settings.timn_offset, def_settings.wtmi_offset, def_settings.obmi_offset, def_settings.obmi_max_size);
+		"\n", def_args.timn_offset, def_args.wtmi_offset, def_args.obmi_offset, def_args.obmi_max_size);
 	exit(EXIT_SUCCESS);
 }
 
@@ -769,7 +767,6 @@ static const struct option long_options[] = {
 int main(int argc, char **argv)
 {
 	int images_given, dummy;
-	args_t args = {};
 	u32 partition;
 
 	while (1) {
@@ -932,16 +929,16 @@ int main(int argc, char **argv)
 			args.no_a53_firmware = 1;
 			break;
 		case timn_offset_opt:
-			settings.timn_offset = parse_u32_opt("timn-offset", optarg, 0x100, 0x4000);
+			args.timn_offset = parse_u32_opt("timn-offset", optarg, 0x100, 0x4000);
 			break;
 		case wtmi_offset_opt:
-			settings.wtmi_offset = parse_u32_opt("wtmi-offset", optarg, 0x800, 0x20000);
+			args.wtmi_offset = parse_u32_opt("wtmi-offset", optarg, 0x800, 0x20000);
 			break;
 		case obmi_offset_opt:
-			settings.obmi_offset = parse_u32_opt("obmi-offset", optarg, 0x1000, 0x100000);
+			args.obmi_offset = parse_u32_opt("obmi-offset", optarg, 0x1000, 0x100000);
 			break;
 		case obmi_max_size_opt:
-			settings.obmi_max_size = parse_u32_opt("obmi-max-size", optarg, 0, 0x1000000);
+			args.obmi_max_size = parse_u32_opt("obmi-max-size", optarg, 0, 0x1000000);
 			break;
 		case 'h':
 			help();
