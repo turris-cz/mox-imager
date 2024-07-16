@@ -720,12 +720,30 @@ static void readresp(u8 cmd, u8 seq, u8 cid, resp_t *resp)
 		xread(((void *) resp) + 6, resp->len);
 }
 
+static u8 *_sendcmd_buf(u32 len)
+{
+	static u32 allocated_len;
+	static u8 *buf;
+
+	if (!allocated_len) {
+		allocated_len = 4096;
+		buf = xmalloc(allocated_len);
+	}
+
+	if (len > allocated_len) {
+		buf = xrealloc(buf, len);
+		allocated_len = len;
+	}
+
+	return buf;
+}
+
 static void _sendcmd(u8 cmd, u8 seq, u8 cid, u8 flags, u32 len,
 		     const void *data, resp_t *resp)
 {
 	u8 *buf;
 
-	buf = xmalloc(8 + len);
+	buf = _sendcmd_buf(8 + len);
 	buf[0] = cmd;
 	buf[1] = seq;
 	buf[2] = cid;
@@ -736,7 +754,6 @@ static void _sendcmd(u8 cmd, u8 seq, u8 cid, u8 flags, u32 len,
 		memcpy(buf + 8, data, len);
 
 	xwrite(buf, 8 + len);
-	free(buf);
 
 	if (resp)
 		readresp(cmd, seq, cid, resp);
