@@ -24,22 +24,7 @@
 #include "sharand.h"
 #include "key.h"
 #include "images.h"
-
-typedef struct {
-	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey_output,
-		   *serial_number, *mac_address, *board, *board_version,
-		   *otp_hash, *otp_read;
-	_Bool sign, hash_a53_firmware, no_a53_firmware, deploy, deploy_no_board_info,
-	      get_otp_hash, create_trusted_image, create_untrusted_image,
-	      sign_untrusted_image, send_escape, genkey, gpp_disassemble;
-	int baudrate;
-	u32 image_bootfs;
-
-	u32 timn_offset;
-	u32 wtmi_offset;
-	u32 obmi_offset;
-	u32 obmi_max_size;
-} args_t;
+#include "mox-imager.h"
 
 static const args_t def_args = {
 	.timn_offset = 0x1000,
@@ -48,9 +33,7 @@ static const args_t def_args = {
 	.obmi_max_size = 0x160000,
 };
 
-static args_t args = def_args;
-
-int terminal_on_exit = 0;
+args_t args = def_args;
 
 struct mox_builder_data {
 	u32 op;
@@ -596,7 +579,7 @@ static void do_uart(const char *tty, const char *fdstr, int send_escape,
 	else if (deploy)
 		uart_deploy(deploy_no_board_info);
 
-	if (terminal_on_exit)
+	if (args.terminal_on_exit)
 		uart_terminal();
 
 	closewtp();
@@ -861,7 +844,7 @@ int main(int argc, char **argv)
 				if (uart_terminal_kbs == (char *)-1)
 					uart_terminal_kbs = NULL;
 			}
-			terminal_on_exit = 1;
+			args.terminal_on_exit = 1;
 			break;
 		case 'N':
 			if (args.serial_number)
@@ -1015,7 +998,7 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	}
 
-	if (!args.otp_read && !args.deploy && !images_given && !terminal_on_exit)
+	if (!args.otp_read && !args.deploy && !images_given && !args.terminal_on_exit)
 		die("No images given, try -h for help");
 
 	if (args.otp_read) {

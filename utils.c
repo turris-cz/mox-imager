@@ -12,13 +12,8 @@
 #include <sys/random.h>
 #include <time.h>
 
+#include "mox-imager.h"
 #include "wtptp.h"
-
-#pragma weak terminal_on_exit
-int terminal_on_exit = 0;
-
-#pragma weak uart_terminal
-void uart_terminal(void) {}
 
 static int vffprintf(unsigned int attr, FILE *fp, const char * restrict fmt, va_list ap)
 {
@@ -76,10 +71,12 @@ __attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt
 
 	fprintf(stderr, "\n\n");
 
-	if (terminal_on_exit) {
-		terminal_on_exit = 0;
+#ifndef GPP_COMPILER
+	if (args.terminal_on_exit) {
+		args.terminal_on_exit = 0;
 		uart_terminal();
 	}
+#endif
 
 	exit(EXIT_FAILURE);
 }
