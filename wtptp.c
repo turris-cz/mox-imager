@@ -20,6 +20,7 @@
 #include "tim.h"
 #include "utils.h"
 #include "wtptp.h"
+#include "mox-imager.h"
 
 /* Some architectures don't have termios2 */
 #ifndef TCGETS2
@@ -1216,11 +1217,9 @@ static int uart_terminal_pipe(int in, int out, const char *quit, int *s,
 	return 0;
 }
 
-const char *uart_terminal_kbs = NULL;
-
 void uart_terminal(void) {
 	const char *quit = "\34c";
-	const char *kbs = uart_terminal_kbs;
+	const char *kbs = args.uart_terminal_kbs;
 	struct termios2 otio, tio;
 	int in, s, k;
 

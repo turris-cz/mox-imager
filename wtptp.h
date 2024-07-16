@@ -31,6 +31,4 @@ extern void uart_otp_read(void);
 extern void uart_deploy(int no_board_info);
 extern void uart_terminal(void);
 
-extern const char *uart_terminal_kbs;
-
 #endif /* _WTPTP_H_ */

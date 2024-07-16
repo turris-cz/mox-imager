@@ -840,9 +840,9 @@ int main(int argc, char **argv)
 			 * '\b' is required.
 			 */
 			if (setupterm(NULL, STDOUT_FILENO, &dummy) == 0) {
-				uart_terminal_kbs = tigetstr("kbs");
-				if (uart_terminal_kbs == (char *)-1)
-					uart_terminal_kbs = NULL;
+				args.uart_terminal_kbs = tigetstr("kbs");
+				if (args.uart_terminal_kbs == (char *)-1)
+					args.uart_terminal_kbs = NULL;
 			}
 			args.terminal_on_exit = 1;
 			break;

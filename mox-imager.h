@@ -11,7 +11,7 @@
 typedef struct {
 	const char *tty, *fdstr, *output, *keyfile, *seed, *genkey_output,
 		   *serial_number, *mac_address, *board, *board_version,
-		   *otp_hash, *otp_read;
+		   *otp_hash, *otp_read, *uart_terminal_kbs;
 	_Bool sign, hash_a53_firmware, no_a53_firmware, deploy, deploy_no_board_info,
 	      get_otp_hash, create_trusted_image, create_untrusted_image,
 	      sign_untrusted_image, send_escape, genkey, gpp_disassemble,
