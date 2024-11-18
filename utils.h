@@ -23,6 +23,7 @@ typedef unsigned long long u64;
 
 extern __attribute__((__format__(printf, 1, 2))) void info(const char * restrict fmt, ...);
 extern __attribute__((__format__(printf, 1, 2))) void notice(const char * restrict fmt, ...);
+extern __attribute__((__format__(printf, 1, 2))) void error(const char * restrict fmt, ...);
 extern __attribute__((__noreturn__, __format__(printf, 1, 2))) void die(const char *fmt, ...);
 
 extern _Bool try_catch(void (*cb)(void *), void *arg);

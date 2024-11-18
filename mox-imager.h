@@ -16,7 +16,7 @@ typedef struct {
 	      get_otp_hash, create_trusted_image, create_untrusted_image,
 	      sign_untrusted_image, send_escape, genkey, gpp_disassemble,
 	      terminal_on_exit;
-	int baudrate;
+	int baudrate, max_restarts;
 	u32 image_bootfs;
 
 	u32 timn_offset;

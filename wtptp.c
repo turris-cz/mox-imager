@@ -31,6 +31,8 @@
 #define termios2 termios
 #endif
 
+#define EXIT_STATUS_TOO_MANY_RESTARTS	5
+
 static int wtpfd = -1;
 static u32 last_image_sent;
 static int sent_timh_was_trusted;
@@ -201,11 +203,23 @@ static int is_all_zeros(const u8 *buf, int len)
 	return 1;
 }
 
+static void initwtp_fail(pthread_t *write_thread)
+{
+	error("Invalid reply too many times, aborting!\n\n");
+
+	if (write_thread) {
+		state_store(STATE_WRITE_CLEAR);
+		seq_write_thread_join(*write_thread);
+	}
+
+	exit(EXIT_STATUS_TOO_MANY_RESTARTS);
+}
+
 /*
  * This works when escape sequence is needed to force UART mode but also when
  * BootROM console is enabled and "wtp" command is needed.
  */
-void initwtp(int escape_seq)
+void initwtp(int escape_seq, int max_restarts)
 {
 	const u8 bootrom_prompt_reply[] = {
 		'>', '>', 0x22, 0x33, 0x44, 0x55, 0x66, 0x77
@@ -216,6 +230,7 @@ void initwtp(int escape_seq)
 	tcflag_t iflag;
 	int ack_count;
 	u8 buf[8192];
+	int restarts;
 	int len, i;
 	int done;
 	int ret;
@@ -248,6 +263,7 @@ void initwtp(int escape_seq)
 	len = 0;
 	ack_count = 0;
 	done = 0;
+	restarts = 0;
 
 	while (!done) {
 		if (state == STATE_WRITE_CLEAR || state == STATE_WRITE_WTP) {
@@ -300,10 +316,15 @@ void initwtp(int escape_seq)
 						printf("Sending clearbuf sequence\n");
 						seq_write_thread_join(write_thread);
 						ack_count = 0;
+						restarts++;
 					} else if (buf[len - 1] != 0x3e) {
-						state_store(STATE_ESCAPE);
-						notice("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
-						fflush(stdout);
+						if (max_restarts >= 0 && restarts > max_restarts) {
+							initwtp_fail(&write_thread);
+						} else {
+							state_store(STATE_ESCAPE);
+							notice("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
+							fflush(stdout);
+						}
 					}
 					len = 0;
 				}
@@ -326,10 +347,14 @@ void initwtp(int escape_seq)
 				}
 				len = 0;
 			} else {
-				state_store(STATE_ESCAPE);
-				seq_write_thread_start(&write_thread);
-				notice("\e[0KInvalid reply, try restarting again\r");
-				fflush(stdout);
+				if (max_restarts >= 0 && restarts > max_restarts) {
+					initwtp_fail(NULL);
+				} else {
+					state_store(STATE_ESCAPE);
+					seq_write_thread_start(&write_thread);
+					notice("\e[0KInvalid reply, try restarting again\r");
+					fflush(stdout);
+				}
 			}
 			break;
 
@@ -342,10 +367,14 @@ void initwtp(int escape_seq)
 				if (!memcmp(buf + len - 8, "!\r\nwtp\r\n", 8)) {
 					done = 1;
 				} else {
-					state_store(STATE_ESCAPE);
-					seq_write_thread_start(&write_thread);
-					notice("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
-					fflush(stdout);
+					if (max_restarts >= 0 && restarts > max_restarts) {
+						initwtp_fail(NULL);
+					} else {
+						state_store(STATE_ESCAPE);
+						seq_write_thread_start(&write_thread);
+						notice("\e[0KInvalid reply 0x%02x, try restarting again\r", buf[len - 1]);
+						fflush(stdout);
+					}
 				}
 			}
 			break;

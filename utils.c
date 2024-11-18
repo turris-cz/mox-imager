@@ -58,6 +58,15 @@ __attribute__((__format__(printf, 1, 2))) void notice(const char * restrict fmt,
 	va_end(ap);
 }
 
+__attribute__((__format__(printf, 1, 2))) void error(const char * restrict fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vffprintf(8 | 1, stdout, fmt, ap);
+	va_end(ap);
+}
+
 static __attribute__((__noreturn__)) void vdie(const char *fmt, va_list ap)
 {
 #ifndef GPP_COMPILER

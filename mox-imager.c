@@ -31,6 +31,7 @@ static const args_t def_args = {
 	.wtmi_offset = 0x4000,
 	.obmi_offset = 0x20000,
 	.obmi_max_size = 0x160000,
+	.max_restarts = -1,
 };
 
 args_t args = def_args;
@@ -546,7 +547,7 @@ static void do_uart(const args_t *args)
 		openwtp(args->tty);
 
 	if (nimages || args->send_escape)
-		initwtp(args->send_escape);
+		initwtp(args->send_escape, args->max_restarts);
 
 	for (i = 0; i < nimages; ++i) {
 		u32 imgtype;
@@ -706,6 +707,9 @@ static void help(void)
 		"  -b, --baudrate=BAUD                         fast upload mode by switching to baudrate BAUD, if supported by image\n"
 		"  -F, --fd=FD                                 TTY file descriptor\n"
 		"  -E, --send-escape-sequence                  send escape sequence to force boot from UART\n"
+		"      --max-restarts=N                        when forcing boot from UART, mox-imager can suggest the user to\n"
+		"                                              restart the board when the forcing was unsuccessful. This option\n"
+		"                                              specifies the maximum number of suggested restarts before aborting.\n"
 		"  -t, --terminal                              run mini terminal after images are sent\n"
 		"  -o, --output=IMAGE                          output SPI NOR flash image to IMAGE\n"
 		"  -k, --key=KEY                               read ECDSA-521 private key from file KEY\n"
@@ -750,6 +754,7 @@ static const struct option long_options[] = {
 	{ "baudrate",			required_argument,	0,	'b' },
 	{ "fd",				required_argument,	0,	'F' },
 	{ "send-escape-sequence",	no_argument,		0,	'E' },
+	{ "max-restarts",		required_argument,	0,	'T' },
 	{ "terminal",			no_argument,		0,	't' },
 	{ "output",			required_argument,	0,	'o' },
 	{ "key",			required_argument,	0,	'k' },
@@ -813,6 +818,11 @@ int main(int argc, char **argv)
 			break;
 		case 'E':
 			args.send_escape = 1;
+			break;
+		case 'T':
+			if (args.max_restarts != -1)
+				die("Option '--max-restarts' already given");
+			args.max_restarts = parse_u32_opt("max-restarts", optarg, 0, INT32_MAX);
 			break;
 		case 'o':
 			if (args.output)
